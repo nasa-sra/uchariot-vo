@@ -9,7 +9,7 @@ This code is designed for use on NASA's uchariot rover based in a C++ implementa
 * Nvidia CUDA Toolkit: https://developer.nvidia.com/cuda-toolkit
 * Intel Realsense SDK: https://www.intelrealsense.com/sdk-2/
 * ORB_SLAM3: https://github.com/UZ-SLAMLab/ORB_SLAM3
-* DBoW2 and g2o (Included in ORB_SLAM3 Thirdparty folder)
+* DBoW2 and g2o (Included in ORB_SLAM3 Thirdparty folder and built with ORB_SLAM3)
 
 ## Installation
 Everything else should be installed prior to ORB_SLAM3.
