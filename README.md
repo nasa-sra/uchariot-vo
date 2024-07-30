@@ -51,9 +51,37 @@ make -j$(nproc)
 sudo make install
 ```
 ### Install Eigen3:
+```
+
+```
 
 ### Install Nvidia CUDA Toolkit:
+```
+
+```
 
 ### Install Intel Realsense SDK (WIP):
+```
+
+```
 
 ### Install ORB_SLAM3:
+Clone the repository
+```
+cd ~
+git clone https://github.com/UZ-SLAMLab/ORB_SLAM3.git
+cd ORB_SLAM3
+```
+Edit the CMakeLists.txt file to enable CUDA support:
+```
+sed -i 's/set(USE_CUDA OFF)/set(USE_CUDA ON)/' CMakeLists.txt
+```
+Edit the CMakeLists.txt file to compile with C++14 (https://github.com/UZ-SLAMLab/ORB_SLAM3/issues/903#issuecomment-2252526837)
+```
+sed -i 's/++11/++14/g' CMakeLists.txt
+```
+Build ORB_SLAM3
+```
+chmod +x build.sh
+./build.sh
+```
