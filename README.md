@@ -21,23 +21,24 @@ git clone https://github.com/nasa-sra/uchariot-vo.git
 
 ### Dependency install:
 ```
-sudo apt -y update
+sudo apt update
+sudo apt upgrade -y
 sudo apt install -y build-essential
 sudo apt install -y libeigen3-dev
 sudo apt install -y cmake
 sudo apt install -y libgtk2.0-dev pkg-config
 sudo apt install -y libepoxy-dev
 sudo apt install -y libboost-all-dev libssl-dev
-sudo apt-get install -y build-essential dkms
-sudo apt-get -y update
-sudo apt-get -y install cuda
+sudo apt install -y build-essential dkms
+sudo apt update
+sudo apt install -y cuda
 sudo apt install -y libglvnd-dev libgl1-mesa-dev libegl1-mesa-dev libwayland-dev libxkbcommon-dev wayland-protocols
 sudo apt install -y libgl1-mesa-dev libglew-dev libpython2.7-dev libpython3-dev python-numpy python3-numpy
 sudo apt install -y libgl1-mesa-dev libglew-dev
 sudo apt install -y build-essential cmake git libgtk2.0-dev pkg-config libavcodec-dev libavformat-dev libswscale-dev
 sudo apt install -y python-dev python3-dev python-numpy python3-numpy libtbb2 libtbb-dev libjpeg-dev libpng-dev libtiff-dev libdc1394-22-dev libeigen3-dev libgflags-dev libgoogle-glog-dev libsuitesparse-dev libglew-dev
-sudo apt -y update
-sudo apt -y upgrade
+sudo apt update
+sudo apt upgrade -y
 ```
 ### Install Pangolin:
 ```
