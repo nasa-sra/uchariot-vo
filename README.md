@@ -30,7 +30,6 @@ sudo apt install -y libgtk2.0-dev pkg-config
 sudo apt install -y libepoxy-dev
 sudo apt install -y libboost-all-dev libssl-dev
 sudo apt install -y build-essential dkms
-sudo apt update
 sudo apt install -y cuda
 sudo apt install -y libglvnd-dev libgl1-mesa-dev libegl1-mesa-dev libwayland-dev libxkbcommon-dev wayland-protocols
 sudo apt install -y libgl1-mesa-dev libglew-dev libpython2.7-dev libpython3-dev python-numpy python3-numpy
