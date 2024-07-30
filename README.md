@@ -14,6 +14,11 @@ This code is designed for use on NASA's uchariot rover based in a C++ implementa
 ## Installation
 Everything else should be installed prior to ORB_SLAM3.
 
+### Clone the Repo:
+```
+git clone https://github.com/nasa-sra/uchariot-vo.git
+```
+
 ### Dependency install:
 ```
 sudo apt -y update
@@ -37,6 +42,7 @@ sudo apt -y upgrade
 ### Install Pangolin:
 ```
 cd ~
+cd uchariot-vo
 git clone https://github.com/stevenlovegrove/Pangolin.git
 cd Pangolin
 mkdir build && cd build
@@ -47,6 +53,7 @@ sudo make install
 ### Install OpenCV with CUDA support:
 ```
 cd ~
+cd uchariot-vo
 git clone https://github.com/opencv/opencv.git
 git clone https://github.com/opencv/opencv_contrib.git
 cd opencv
@@ -79,6 +86,7 @@ https://github.com/IntelRealSense/librealsense/blob/master/doc/installation_jets
 Clone the repository
 ```
 cd ~
+cd uchariot-vo
 git clone https://github.com/UZ-SLAMLab/ORB_SLAM3.git
 cd ORB_SLAM3
 ```
