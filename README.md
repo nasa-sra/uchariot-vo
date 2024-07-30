@@ -3,8 +3,8 @@
 This code is designed for use on NASA's uchariot rover based in a C++ implementation. It has been tested on a Jetson Nano running Ubuntu 20.04 but should be compatible with all future Ubuntu verisions assuming packages are still supported. Nvidia CUDA is attempted for the install and it packages are running with the assumption of a CUDA GPU avaliable.
 
 ## Required Dependencies
-* OpenCV (4.4 or higher) 
 * Pangolin
+* OpenCV (4.4 or higher)
 * Eigen3
 * Nvidia CUDA Toolkit: https://developer.nvidia.com/cuda-toolkit
 * Intel Realsense SDK (WIP): https://github.com/IntelRealSense/librealsense/releases
@@ -50,3 +50,10 @@ cmake -D CMAKE_BUILD_TYPE=RELEASE \
 make -j$(nproc)
 sudo make install
 ```
+### Install Eigen3
+
+### Install Nvidia CUDA Toolkit:
+
+### Install Intel Realsense SDK (WIP):
+
+### Install ORB_SLAM3
