@@ -50,10 +50,10 @@ cmake -D CMAKE_BUILD_TYPE=RELEASE \
 make -j$(nproc)
 sudo make install
 ```
-### Install Eigen3
+### Install Eigen3:
 
 ### Install Nvidia CUDA Toolkit:
 
 ### Install Intel Realsense SDK (WIP):
 
-### Install ORB_SLAM3
+### Install ORB_SLAM3:
