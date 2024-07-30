@@ -5,9 +5,9 @@ This code is designed for use on NASA's uchariot rover based in a C++ implementa
 ## Required Dependencies
 * Pangolin
 * OpenCV (4.4 or higher)
-* Eigen3
+* Eigen3 (Installed with dependencies)
 * Nvidia CUDA Toolkit: https://developer.nvidia.com/cuda-toolkit
-* Intel Realsense SDK (WIP): https://github.com/IntelRealSense/librealsense/releases
+* Intel Realsense SDK: https://www.intelrealsense.com/sdk-2/
 * ORB_SLAM3: https://github.com/UZ-SLAMLab/ORB_SLAM3
 * DBoW2 and g2o (Included in ORB_SLAM3 Thirdparty folder)
 
@@ -16,9 +16,23 @@ Everything else should be installed prior to ORB_SLAM3.
 
 ### Dependency install:
 ```
-sudo apt update
+sudo apt -y update
+sudo apt install -y build-essential
+sudo apt install -y libeigen3-dev
+sudo apt install -y cmake
+sudo apt install -y libgtk2.0-dev pkg-config
+sudo apt install -y libepoxy-dev
+sudo apt install -y libboost-all-dev libssl-dev
+sudo apt-get install -y build-essential dkms
+sudo apt-get -y update
+sudo apt-get -y install cuda
+sudo apt install -y libglvnd-dev libgl1-mesa-dev libegl1-mesa-dev libwayland-dev libxkbcommon-dev wayland-protocols
+sudo apt install -y libgl1-mesa-dev libglew-dev libpython2.7-dev libpython3-dev python-numpy python3-numpy
+sudo apt install -y libgl1-mesa-dev libglew-dev
 sudo apt install -y build-essential cmake git libgtk2.0-dev pkg-config libavcodec-dev libavformat-dev libswscale-dev
 sudo apt install -y python-dev python3-dev python-numpy python3-numpy libtbb2 libtbb-dev libjpeg-dev libpng-dev libtiff-dev libdc1394-22-dev libeigen3-dev libgflags-dev libgoogle-glog-dev libsuitesparse-dev libglew-dev
+sudo apt -y update
+sudo apt -y upgrade
 ```
 ### Install Pangolin:
 ```
@@ -38,32 +52,28 @@ git clone https://github.com/opencv/opencv_contrib.git
 cd opencv
 mkdir build && cd build
 cmake -D CMAKE_BUILD_TYPE=RELEASE \
-    -D CMAKE_INSTALL_PREFIX=/usr/local \
-    -D WITH_CUDA=ON \
-    -D ENABLE_FAST_MATH=1 \
-    -D CUDA_FAST_MATH=1 \
-    -D WITH_CUBLAS=1 \
-    -D OPENCV_EXTRA_MODULES_PATH=~/opencv_contrib/modules \
-    -D BUILD_EXAMPLES=OFF \
-    -D BUILD_TESTS=OFF \
-    -D BUILD_PERF_TESTS=OFF ..
+      -D CMAKE_INSTALL_PREFIX=/usr/local \
+      -D WITH_CUDA=ON \
+      -D ENABLE_FAST_MATH=1 \
+      -D CUDA_FAST_MATH=1 \
+      -D WITH_CUBLAS=1 \
+      -D WITH_GTK=ON \
+      -D WITH_GTK_2_X=ON \
+      -D OPENCV_EXTRA_MODULES_PATH=~/opencv_contrib/modules \
+      -D BUILD_EXAMPLES=OFF \
+      -D BUILD_TESTS=OFF \
+      -D BUILD_PERF_TESTS=OFF ..
 make -j$(nproc)
 sudo make install
 ```
-### Install Eigen3:
-```
-
-```
 
 ### Install Nvidia CUDA Toolkit:
-```
+Follow install instructions here:
+https://developer.nvidia.com/cuda-downloads
 
-```
-
-### Install Intel Realsense SDK (WIP):
-```
-
-```
+### Install Intel Realsense SDK:
+Follow instructions here:
+https://github.com/IntelRealSense/librealsense/blob/master/doc/installation_jetson.md
 
 ### Install ORB_SLAM3:
 Clone the repository
