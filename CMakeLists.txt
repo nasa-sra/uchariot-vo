@@ -1,31 +1,53 @@
-cmake_minimum_required(VERSION 3.10)
-project(Visual_Odometry)
+cmake_minimum_required(VERSION 3.0)
+project(ORB_SLAM3_Cpp)
 
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Define the path to the ORB_SLAM3 installation
-set(ORB_SLAM3_DIR "${CMAKE_SOURCE_DIR}/../ORB_SLAM3")
+# Find OpenCV
+find_package(OpenCV 4.4 REQUIRED)
+if(NOT OpenCV_FOUND)
+   message(FATAL_ERROR "OpenCV > 4.4 not found.")
+endif()
 
-# Add ORB_SLAM3 and OpenCV paths
-set(ORB_SLAM3_INCLUDE_DIR "${ORB_SLAM3_DIR}/include")
-set(ORB_SLAM3_LIB_DIR "${ORB_SLAM3_DIR}/lib")
+# Find Eigen3
+find_package(Eigen3 3.1.0 REQUIRED)
 
-# Find OpenCV package
-find_package(OpenCV REQUIRED)
+# Find Pangolin
+find_package(Pangolin REQUIRED)
 
-# Include directories
-include_directories(${ORB_SLAM3_INCLUDE_DIR})
-include_directories(${OpenCV_INCLUDE_DIRS})
+# Set the path to ORB_SLAM3 directory
+set(ORB_SLAM3_DIR ${CMAKE_CURRENT_SOURCE_DIR}/ORB_SLAM3)
 
-# Link directories
-link_directories(${ORB_SLAM3_LIB_DIR})
+# Include ORB_SLAM3 headers
+include_directories(
+    ${ORB_SLAM3_DIR}/include
+    ${ORB_SLAM3_DIR}/include/CameraModels
+    ${ORB_SLAM3_DIR}/Thirdparty/Sophus
+    ${ORB_SLAM3_DIR}/Thirdparty/DBoW2
+    ${ORB_SLAM3_DIR}/Thirdparty/g2o # include the g2o directory containing config.h
+    ${EIGEN3_INCLUDE_DIR}
+    ${Pangolin_INCLUDE_DIRS}
+)
+
+# Link ORB_SLAM3 library
+link_directories(${ORB_SLAM3_DIR}/lib)
 
 # Add executable
-add_executable(Visual_Odometry src/main.cpp)
+add_executable(ORB_SLAM3_Cpp monocular_test.cpp)
 
 # Link libraries
-target_link_libraries(Visual_Odometry
-    ${ORB_SLAM3_LIB_DIR}/libORB_SLAM3.so
+target_link_libraries(ORB_SLAM3_Cpp
     ${OpenCV_LIBS}
+    ${EIGEN3_LIBS}
+    ${Pangolin_LIBRARIES}
+    ${ORB_SLAM3_DIR}/Thirdparty/DBoW2/lib/libDBoW2.so
+    ${ORB_SLAM3_DIR}/Thirdparty/g2o/lib/libg2o.so
+    -lboost_serialization
+    -lcrypto
+    ORB_SLAM3
 )
+
+# Set output directory
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/bin)

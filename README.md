@@ -36,6 +36,7 @@ sudo apt install -y libgl1-mesa-dev libglew-dev libpython2.7-dev libpython3-dev 
 sudo apt install -y libgl1-mesa-dev libglew-dev
 sudo apt install -y build-essential cmake git libgtk2.0-dev pkg-config libavcodec-dev libavformat-dev libswscale-dev
 sudo apt install -y python-dev python3-dev python-numpy python3-numpy libtbb2 libtbb-dev libjpeg-dev libpng-dev libtiff-dev libdc1394-22-dev libeigen3-dev libgflags-dev libgoogle-glog-dev libsuitesparse-dev libglew-dev
+sudo apt install -y libgtk2.0-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libdc1394-22-dev
 sudo apt update
 sudo apt upgrade -y
 ```
@@ -50,6 +51,8 @@ cmake ..
 make -j$(nproc)
 sudo make install
 ```
+### Install Nvidia CUDA Toolkit:
+Follow install instructions here: https://developer.nvidia.com/cuda-downloads
 ### Install OpenCV with CUDA support:
 ```
 cd ~
@@ -60,24 +63,27 @@ cd opencv
 mkdir build && cd build
 cmake -D CMAKE_BUILD_TYPE=RELEASE \
       -D CMAKE_INSTALL_PREFIX=/usr/local \
+      -D OPENCV_EXTRA_MODULES_PATH=../../opencv_contrib/modules \
       -D WITH_CUDA=ON \
-      -D ENABLE_FAST_MATH=1 \
-      -D CUDA_FAST_MATH=1 \
-      -D WITH_CUBLAS=1 \
+      -D CUDA_ARCH_BIN="87" \
+      -D CUDA_ARCH_PTX="87" \
+      -D WITH_CUBLAS=ON \
+      -D ENABLE_FAST_MATH=ON \
+      -D CUDA_FAST_MATH=ON \
+      -D WITH_FFMPEG=ON \
+      -D OPENCV_FFMPEG_SKIP_BUILD_CHECK=ON \
+      -D OPENCV_ENABLE_NONFREE=ON \
+      -D BUILD_opencv_cudacodec=ON \
       -D WITH_GTK=ON \
       -D WITH_GTK_2_X=ON \
-      -D OPENCV_EXTRA_MODULES_PATH=~/opencv_contrib/modules \
       -D BUILD_EXAMPLES=OFF \
       -D BUILD_TESTS=OFF \
-      -D BUILD_PERF_TESTS=OFF ..
+      -D BUILD_PERF_TESTS=OFF \
+      ..
 make -j$(nproc)
 sudo make install
+sudo ldconfig
 ```
-
-### Install Nvidia CUDA Toolkit:
-Follow install instructions here:
-https://developer.nvidia.com/cuda-downloads
-
 ### Install Intel Realsense SDK:
 Follow instructions here:
 https://github.com/IntelRealSense/librealsense/blob/master/doc/installation_jetson.md

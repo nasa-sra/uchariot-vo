@@ -1,3 +1,0 @@
-/home/evanpendleton/Visual_Odometry/build/CMakeFiles/rebuild_cache.dir
-/home/evanpendleton/Visual_Odometry/build/CMakeFiles/edit_cache.dir
-/home/evanpendleton/Visual_Odometry/build/CMakeFiles/Visual_Odometry.dir
