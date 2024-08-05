@@ -1,70 +1,136 @@
-#include <librealsense2/rs.hpp>
 #include <iostream>
-#include <unistd.h>  // For usleep
+#include <opencv2/opencv.hpp>
+#include <opencv2/core/cuda.hpp>
+#include <opencv2/cudaimgproc.hpp>
+#include "System.h"
+#include <chrono>
+#include <iomanip>
+#include <sstream>
+#include <sophus/se3.hpp>
+#include <librealsense2/rs.hpp> // Add RealSense header
+
+int main(int argc, char** argv) {
+    if (argc != 3) {
+        std::cerr << "Usage: ./YourORB_SLAM3Executable <path_to_vocabulary_file> <path_to_settings_file>" << std::endl;
+        return -1;
+    }
+
+    // Check for CUDA device
+    if (cv::cuda::getCudaEnabledDeviceCount() == 0) {
+        std::cerr << "No CUDA capable devices found!" << std::endl;
+        return -1;
+    }
+
+    std::string voc_file = argv[1];
+    std::string settings_file = argv[2];
+
+    // Initialize ORB-SLAM3 system
+    ORB_SLAM3::System SLAM(voc_file, settings_file, ORB_SLAM3::System::MONOCULAR, true);
+
+    // Initialize RealSense pipeline
+    rs2::pipeline pipe;
+    rs2::config cfg;
+    cfg.enable_stream(RS2_STREAM_COLOR, 640, 480, RS2_FORMAT_BGR8, 30);
+    cfg.enable_stream(RS2_STREAM_GYRO);
+    cfg.enable_stream(RS2_STREAM_ACCEL);
+    pipe.start(cfg);
+
+    cv::Mat frame;
+    cv::cuda::GpuMat d_frame, d_gray_frame;
+    double timestamp = 0;
+    double fps = 30; // Assuming 30 FPS, adjust if needed
+    double frame_time = 1.0 / fps;
+
+    auto start = std::chrono::high_resolution_clock::now();
+    int frame_count = 0;
+
+    while (true) {
+        // Wait for the next set of frames
+        rs2::frameset frames = pipe.wait_for_frames();
+
+        // Get the color frame
+        rs2::frame color_frame = frames.get_color_frame();
+        rs2::frame gyro_frame = frames.first_or_default(RS2_STREAM_GYRO);
+        rs2::frame accel_frame = frames.first_or_default(RS2_STREAM_ACCEL);
+
+        // Convert RealSense frame to OpenCV Mat
+        frame = cv::Mat(cv::Size(640, 480), CV_8UC3, (void*)color_frame.get_data(), cv::Mat::AUTO_STEP);
+
+        // Upload frame to GPU
+        d_frame.upload(frame);
+
+        // Convert to grayscale on GPU
+        cv::cuda::cvtColor(d_frame, d_gray_frame, cv::COLOR_BGR2GRAY);
+
+        // Download grayscale frame from GPU
+        cv::Mat gray_frame;
+        d_gray_frame.download(gray_frame);
+
+        // Pass the frame to ORB-SLAM3 and get the current pose
+        Sophus::SE3f pose = SLAM.TrackMonocular(gray_frame, timestamp);
+
+        // Extract position from the pose
+        Eigen::Vector3f translation = pose.translation();
+        float x = translation.x();
+        float y = translation.y();
+        float z = translation.z();
+
+        // Get IMU data if available
+        std::string imu_data;
+        if (gyro_frame && accel_frame) {
+            auto gyro = gyro_frame.as<rs2::motion_frame>();
+            auto accel = accel_frame.as<rs2::motion_frame>();
+            
+            auto gyro_data = gyro.get_motion_data();
+            auto accel_data = accel.get_motion_data();
+
+            std::ostringstream imu_stream;
+            imu_stream << "Gyro - X: " << gyro_data.x << " Y: " << gyro_data.y << " Z: " << gyro_data.z
+                       << " | Accel - X: " << accel_data.x << " Y: " << accel_data.y << " Z: " << accel_data.z;
+            imu_data = imu_stream.str();
+        }
+
+        // Create a string with the current position
+        std::ostringstream position_stream;
+        position_stream << std::fixed << std::setprecision(2)
+                        << "Position (m): X=" << x << " Y=" << y << " Z=" << z;
+        std::string position_text = position_stream.str();
+
+        // Print the position and IMU data in an updating line at the bottom of the terminal
+        clearLine();
+        std::cout << position_text << " | " << imu_data << std::flush;
+
+        // Optionally display the frame
+        #ifdef DISPLAY_FRAMES
+        cv::putText(frame, position_text, cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 255, 0), 2);
+        cv::imshow("Frame", frame);
+        if (cv::waitKey(1) == 27) { // Exit on 'ESC' key
+            break;
+        }
+        #endif
+
+        timestamp += frame_time;
+        frame_count++;
+
+        auto now = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
+        if (duration >= 1000) {
+            double current_fps = frame_count / (duration / 1000.0);
+            std::cout << "\rFPS: " << current_fps << std::flush;
+            start = now;
+            frame_count = 0;
+        }
+    }
+
+    // Shutdown ORB-SLAM3 and stop the RealSense pipeline
+    SLAM.Shutdown();
+    pipe.stop();
+
+    return 0;
+}
 
 // Function to clear the line in terminal
 void clearLine() {
     std::cout << "\033[2K";  // ANSI escape code to clear the current line
     std::cout << "\r";      // Move the cursor back to the beginning of the line
-}
-
-// Function to integrate data to estimate velocity and position
-void integrate(double& position, double& velocity, double accel, double dt) {
-    velocity += accel * dt;
-    position += velocity * dt;
-}
-
-int main() {
-    // Initialize the RealSense context and pipeline
-    rs2::context ctx;
-    rs2::pipeline pipe(ctx);
-    rs2::config cfg;
-    
-    // Enable the IMU stream
-    cfg.enable_stream(RS2_STREAM_GYRO);
-    cfg.enable_stream(RS2_STREAM_ACCEL);
-    
-    // Start the pipeline
-    pipe.start(cfg);
-    
-    double position_x = 0.0, velocity_x = 0.0;
-    double position_y = 0.0, velocity_y = 0.0;
-    double position_z = 0.0, velocity_z = 0.0;
-    
-    auto last_time = std::chrono::high_resolution_clock::now();
-    
-    while (true) {
-        // Wait for a new set of frames
-        rs2::frameset frames = pipe.wait_for_frames();
-        
-        // Get IMU data
-        rs2::frame accel_frame = frames.first_or_default(RS2_STREAM_ACCEL);
-        
-        if (accel_frame) {
-            auto accel = accel_frame.as<rs2::motion_frame>();
-            auto accel_data = accel.get_motion_data();
-            
-            auto now = std::chrono::high_resolution_clock::now();
-            std::chrono::duration<double> elapsed = now - last_time;
-            last_time = now;
-            double dt = elapsed.count();
-            
-            // Integrate data
-            integrate(position_x, velocity_x, accel_data.x, dt);
-            integrate(position_y, velocity_y, accel_data.y, dt);
-            integrate(position_z, velocity_z, accel_data.z, dt);
-            
-            // Clear the line and print new data
-            clearLine();
-            std::cout << "Accel - X: " << accel_data.x << " Y: " << accel_data.y << " Z: " << accel_data.z
-                      << " | Vel - X: " << velocity_x << " Y: " << velocity_y << " Z: " << velocity_z
-                      << " | Pos - X: " << position_x << " Y: " << position_y << " Z: " << position_z
-                      << std::flush;
-        }
-        
-        // Sleep for a short duration to control the update rate
-        usleep(50000);  // Sleep for 50 milliseconds
-    }
-    
-    return 0;
 }
