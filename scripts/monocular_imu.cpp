@@ -21,19 +21,8 @@ public:
         cfg.enable_stream(RS2_STREAM_ACCEL, RS2_FORMAT_MOTION_XYZ32F);
         cfg.enable_stream(RS2_STREAM_GYRO, RS2_FORMAT_MOTION_XYZ32F);
 
-        profile = pipe.start(cfg, [&](rs2::frame frame) {
-            auto motion = frame.as<rs2::motion_frame>();
-            if (motion) {
-                if (motion.get_profile().stream_type() == RS2_STREAM_GYRO) {
-                    double ts = motion.get_timestamp();
-                    rs2_vector gyro_data = motion.get_motion_data();
-                    // Process the gyro data with your algorithm if needed
-                } else if (motion.get_profile().stream_type() == RS2_STREAM_ACCEL) {
-                    rs2_vector accel_data = motion.get_motion_data();
-                    // Process the accel data with your algorithm if needed
-                }
-            }
-        });
+        // Start the pipeline without a callback
+        profile = pipe.start(cfg);
     }
 
     ~Realsense() {
