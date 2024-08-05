@@ -4,8 +4,8 @@ import sys
 import glob
 import numpy as np
 import time
+import pyrealsense2 as rs
 
-complex_camera_read = False
 capture_checkerboard_size = (7, 9)  # Checkerboard size to detect during capture
 max_checkerboard_size = (8, 11)  # Maximum checkerboard size to check during post-processing
 scale = 15  # mm size of each checker
@@ -21,15 +21,12 @@ def img_dir(i):
         os.makedirs(s)
     return s
 
-def load_camera(camera_id):
-    if complex_camera_read:
-        s = f"v4l2src device=/dev/video{camera_id} ! video/x-raw, width={camera_resolution[0]}, height={camera_resolution[1]} ! videoconvert ! video/x-raw,format=BGR ! appsink"
-        camera = cv2.VideoCapture(s)
-    else:
-        camera = cv2.VideoCapture(camera_id)
-        camera.set(cv2.CAP_PROP_FRAME_WIDTH, camera_resolution[0])
-        camera.set(cv2.CAP_PROP_FRAME_HEIGHT, camera_resolution[1])
-    return camera
+def load_realsense_camera():
+    pipeline = rs.pipeline()
+    config = rs.config()
+    config.enable_stream(rs.stream.color, camera_resolution[0], camera_resolution[1], rs.format.bgr8, 30)
+    pipeline.start(config)
+    return pipeline
 
 def preprocess_image(frame):
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -40,7 +37,6 @@ def preprocess_image(frame):
 def find_checkerboard(frame, size, draw_debug=False):
     processed = preprocess_image(frame)
     
-    # Try different flags combinations
     flags = [
         cv2.CALIB_CB_ADAPTIVE_THRESH + cv2.CALIB_CB_NORMALIZE_IMAGE,
         cv2.CALIB_CB_ADAPTIVE_THRESH + cv2.CALIB_CB_FILTER_QUADS,
@@ -77,9 +73,8 @@ def update_live(frame_r, id_, pic_id, last_save_time):
 
     if ret:
         status_text = f"Checkerboard {capture_checkerboard_size} Detected"
-        frame_to_save = frame_r.copy()  # Create a copy of the frame before drawing the chessboard pattern
+        frame_to_save = frame_r.copy()
         frame_r = cv2.drawChessboardCorners(frame_r, capture_checkerboard_size, corners, ret)
-        # Save image every second
         if current_time - last_save_time >= 1:
             save_image(frame_to_save, id_, pic_id)
             pic_id += 1
@@ -92,17 +87,19 @@ def update_live(frame_r, id_, pic_id, last_save_time):
 
     return frame_r, pic_id, last_save_time
 
-def loop(camera, id_):
+def loop(pipeline, id_):
     print("Press 'd' to toggle debug view, 'q' to quit")
     pic_id = 1
     debug_view = False
-    last_save_time = time.time() - 1  # Initialize to allow saving immediately on first detection
+    last_save_time = time.time() - 1
 
     while True:
-        ret, frame_r = camera.read()
-        if not ret:
-            break
+        frames = pipeline.wait_for_frames()
+        color_frame = frames.get_color_frame()
+        if not color_frame:
+            continue
 
+        frame_r = np.asanyarray(color_frame.get_data())
         frame_a, pic_id, last_save_time = update_live(frame_r.copy(), id_, pic_id, last_save_time)
 
         cv2.imshow("FEED", frame_a)
@@ -114,7 +111,7 @@ def loop(camera, id_):
         elif key == ord('q'):
             break
 
-    camera.release()
+    pipeline.stop()
     cv2.destroyAllWindows()
 
 def update_calc(frame_r, points2d):
@@ -122,6 +119,7 @@ def update_calc(frame_r, points2d):
     if ret:
         points2d.append(corners)
     return points2d
+
 def calculate(id_):
     points2d = []
     capture_object_p3d = np.zeros((1, capture_checkerboard_size[0] * capture_checkerboard_size[1], 3), np.float32)
@@ -137,7 +135,6 @@ def calculate(id_):
         print("No images with detected corners found. Calibration cannot proceed.")
         return None, None
 
-    # Post-processing to check for all sizes starting from max_checkerboard_size down to capture_checkerboard_size
     all_corners = {}
     for size_x in range(max_checkerboard_size[0], capture_checkerboard_size[0] - 1, -1):
         for size_y in range(max_checkerboard_size[1], capture_checkerboard_size[1] - 1, -1):
@@ -147,7 +144,7 @@ def calculate(id_):
                     continue
                 print(f"Checking for checkerboard {size} in image {fn}")
                 frame_r = cv2.imread(fn)
-                if size[0] > 2 and size[1] > 2:  # Ensure valid size
+                if size[0] > 2 and size[1] > 2:
                     ret, corners = find_checkerboard(frame_r, size)
                     if ret:
                         print(f"Found pattern for image {fn} with size {size}")
@@ -160,7 +157,6 @@ def calculate(id_):
     points3d = []
     points2d = []
     for fn, (size, corners) in all_corners.items():
-        # Create object points for current checkerboard size
         object_p3d = np.zeros((1, size[0] * size[1], 3), np.float32)
         object_p3d[0, :, :2] = np.mgrid[0:size[0], 0:size[1]].T.reshape(-1, 2) * scale
         points3d.append(object_p3d)
@@ -179,17 +175,9 @@ def calculate(id_):
     print("\nDistortion values:")
     print(distortion)
 
-    # Extract intrinsic parameters
-    fx = matrix[0, 0]
-    fy = matrix[1, 1]
-    cx = matrix[0, 2]
-    cy = matrix[1, 2]
-
-    # Extract distortion coefficients
-    k1 = distortion[0, 0]
-    k2 = distortion[0, 1]
-    p1 = distortion[0, 2]
-    p2 = distortion[0, 3]
+    fx, fy = matrix[0, 0], matrix[1, 1]
+    cx, cy = matrix[0, 2], matrix[1, 2]
+    k1, k2, p1, p2 = distortion[0, :4]
 
     print(f"\nCamera1 Parameters:")
     print(f"Camera1.fx: {fx}")
@@ -204,15 +192,12 @@ def calculate(id_):
     return matrix, distortion
 
 def help():
-    return """cal-cam.py <nominal_id> <command> [camera_id]
+    return """cal-cam.py <nominal_id> <command>
 
 Commands:
     pics    take pictures for processing
     calc    calculate intrinsic camera properties and write to the database
     reset   delete calibration images for specified camera
-
-Options:
-    camera_id   (optional) Specify the camera ID (default is 0)
 """
 
 def main(args):
@@ -222,7 +207,6 @@ def main(args):
 
     nominal_id = int(args[1])
     cmd = args[2]
-    camera_id = int(args[3]) if len(args) > 3 else 0
     i_dir = img_dir(nominal_id)
 
     if cmd == 'reset':
@@ -230,8 +214,8 @@ def main(args):
     elif cmd == 'pics':
         if not os.path.exists(i_dir):
             os.makedirs(i_dir)
-        camera = load_camera(camera_id)
-        loop(camera, nominal_id)
+        pipeline = load_realsense_camera()
+        loop(pipeline, nominal_id)
     elif cmd == 'calc':
         if not os.path.exists(i_dir):
             print("Calibration images don't exist, please take some")
