@@ -24,10 +24,10 @@ if [ ! -d "$DEST_DIR" ]; then
     mkdir "$DEST_DIR"
 fi
 
-# If CMakeLists.txt doesn't exist, create it with initial content
+# If CMakeLists.txt doesn't exist, create it (it will be empty at this point)
 if [ ! -f "$CMAKE_FILE" ]; then
     echo "Creating CMakeLists.txt in $DEST_DIR"
-    echo "set(CMAKE_RUNTIME_OUTPUT_DIRECTORY \${PROJECT_SOURCE_DIR})" > "$CMAKE_FILE"
+    touch "$CMAKE_FILE"
 fi
 
 # Function to check if an entry already exists in CMakeLists.txt
@@ -54,9 +54,10 @@ for FILE in "$SOURCE_DIR"/*; do
         # Check if entry already exists in CMakeLists.txt
         if ! entry_exists "$FILENAME_WITHOUT_EXT"; then
             echo "Adding entry for $FILENAME_WITHOUT_EXT to CMakeLists.txt"
-            # Append entry to CMakeLists.txt
+            # Append entry to CMakeLists.txt with runtime output directory set before each executable
+            echo "set(CMAKE_RUNTIME_OUTPUT_DIRECTORY \${PROJECT_SOURCE_DIR})" >> "$CMAKE_FILE"
             echo "add_executable($FILENAME_WITHOUT_EXT" >> "$CMAKE_FILE"
-            echo "       $BASENAME" >> "$CMAKE_FILE"
+            echo "       ../$BASENAME" >> "$CMAKE_FILE"
             echo ")" >> "$CMAKE_FILE"
             echo "target_link_libraries($FILENAME_WITHOUT_EXT \${PROJECT_NAME})" >> "$CMAKE_FILE"
             echo "" >> "$CMAKE_FILE"  # Add an empty line for readability
