@@ -15,6 +15,14 @@ void clearLine() {
     std::cout << "\r";      // Move the cursor back to the beginning of the line
 }
 
+// Gravity vector (m/s^2) assuming z-axis is up for IMU
+const Eigen::Vector3f gravity(0.0, 0.0, 9.81);
+
+// Function to apply rotation to the gravity vector
+Eigen::Vector3f rotateGravityVector(const Eigen::Vector3f& gravity, const Eigen::Matrix3f& rotation) {
+    return rotation * gravity;
+}
+
 int main(int argc, char** argv) {
     if (argc != 3) {
         std::cerr << "Usage: ./YourORB_SLAM3Executable <path_to_vocabulary_file> <path_to_settings_file>" << std::endl;
@@ -49,6 +57,9 @@ int main(int argc, char** argv) {
 
     auto start = std::chrono::high_resolution_clock::now();
     int frame_count = 0;
+
+    // Define rotation matrix if needed to adjust for IMU orientation
+    Eigen::Matrix3f rotation_matrix = Eigen::Matrix3f::Identity();  // Adjust this matrix as needed
 
     while (true) {
         // Wait for the next set of frames
@@ -90,9 +101,18 @@ int main(int argc, char** argv) {
             auto gyro_data = gyro.get_motion_data();
             auto accel_data = accel.get_motion_data();
 
+            // Convert accelerometer data to Eigen vector
+            Eigen::Vector3f accel_vec(accel_data.x, accel_data.y, accel_data.z);
+
+            // Adjust gravity vector if necessary
+            Eigen::Vector3f adjusted_gravity = rotateGravityVector(gravity, rotation_matrix);
+
+            // Compensate for gravity in the accelerometer data
+            Eigen::Vector3f corrected_accel = accel_vec - adjusted_gravity;
+
             std::ostringstream imu_stream;
             imu_stream << "Gyro - X: " << gyro_data.x << " Y: " << gyro_data.y << " Z: " << gyro_data.z
-                       << " | Accel - X: " << accel_data.x << " Y: " << accel_data.y << " Z: " << accel_data.z;
+                       << " | Accel - X: " << corrected_accel.x() << " Y: " << corrected_accel.y() << " Z: " << corrected_accel.z();
             imu_data = imu_stream.str();
         }
 
