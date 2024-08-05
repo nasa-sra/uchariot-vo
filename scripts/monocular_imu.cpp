@@ -95,10 +95,7 @@ int main(int argc, char** argv) {
         // Get IMU data if available
         std::string imu_data;
         if (gyro_frame && accel_frame) {
-            auto gyro = gyro_frame.as<rs2::motion_frame>();
             auto accel = accel_frame.as<rs2::motion_frame>();
-            
-            auto gyro_data = gyro.get_motion_data();
             auto accel_data = accel.get_motion_data();
 
             // Convert accelerometer data to Eigen vector
@@ -111,8 +108,7 @@ int main(int argc, char** argv) {
             Eigen::Vector3f corrected_accel = accel_vec - adjusted_gravity;
 
             std::ostringstream imu_stream;
-            imu_stream << "Gyro - X: " << gyro_data.x << " Y: " << gyro_data.y << " Z: " << gyro_data.z
-                       << " | Accel - X: " << corrected_accel.x() << " Y: " << corrected_accel.y() << " Z: " << corrected_accel.z();
+            imu_stream << "Accel - X: " << corrected_accel.x() << " Y: " << corrected_accel.y() << " Z: " << corrected_accel.z();
             imu_data = imu_stream.str();
         }
 
