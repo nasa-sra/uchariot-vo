@@ -13,7 +13,7 @@ scale = 15  # mm size of each checker
 criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
 
 # Specify desired resolution here
-camera_resolution = (1280, 720)  # Example resolution (width, height)
+camera_resolution = (640, 480)  # Example resolution (width, height)
 
 def img_dir(i):
     s = 'calimgs/' + str(i)
