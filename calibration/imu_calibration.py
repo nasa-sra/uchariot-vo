@@ -1,5 +1,6 @@
 import pyrealsense2 as rs
 import numpy as np
+import yaml
 
 def get_intrinsics(stream_profile):
     # Get intrinsics of the stream profile
@@ -10,6 +11,51 @@ def get_extrinsics(depth_profile, color_profile):
     # Get extrinsics from depth to color sensor
     extrinsics = depth_profile.get_extrinsics_to(color_profile)
     return extrinsics
+
+def generate_yaml_config(depth_intrinsics, color_intrinsics, extrinsics):
+    # Convert data to YAML format
+    config = {
+        'Camera': {
+            'Depth': {
+                'Camera.fx': depth_intrinsics.fx,
+                'Camera.fy': depth_intrinsics.fy,
+                'Camera.cx': depth_intrinsics.ppx,
+                'Camera.cy': depth_intrinsics.ppy,
+                'Camera.k1': depth_intrinsics.coeffs[0],
+                'Camera.k2': depth_intrinsics.coeffs[1],
+                'Camera.p1': depth_intrinsics.coeffs[2],
+                'Camera.p2': depth_intrinsics.coeffs[3],
+                'Camera.k3': depth_intrinsics.coeffs[4],
+                'Camera.width': depth_intrinsics.width,
+                'Camera.height': depth_intrinsics.height,
+                'Camera.model': 'pinhole'  # Assuming pinhole model, adjust if necessary
+            },
+            'Color': {
+                'Camera.fx': color_intrinsics.fx,
+                'Camera.fy': color_intrinsics.fy,
+                'Camera.cx': color_intrinsics.ppx,
+                'Camera.cy': color_intrinsics.ppy,
+                'Camera.k1': color_intrinsics.coeffs[0],
+                'Camera.k2': color_intrinsics.coeffs[1],
+                'Camera.p1': color_intrinsics.coeffs[2],
+                'Camera.p2': color_intrinsics.coeffs[3],
+                'Camera.k3': color_intrinsics.coeffs[4],
+                'Camera.width': color_intrinsics.width,
+                'Camera.height': color_intrinsics.height,
+                'Camera.model': 'pinhole'  # Assuming pinhole model, adjust if necessary
+            }
+        },
+        'Extrinsics': {
+            'DepthToColor': {
+                'Rotation': extrinsics.rotation.tolist(),
+                'Translation': extrinsics.translation.tolist()
+            }
+        }
+    }
+    
+    # Write to YAML file
+    with open('orb_slam_config.yaml', 'w') as file:
+        yaml.dump(config, file, default_flow_style=False)
 
 def main():
     # Create a pipeline
@@ -29,35 +75,13 @@ def main():
         depth_stream = profile.get_stream(rs.stream.depth).as_video_stream_profile()
         color_stream = profile.get_stream(rs.stream.color).as_video_stream_profile()
 
-        # Get and print depth sensor intrinsics
+        # Get intrinsics and extrinsics
         depth_intrinsics = get_intrinsics(depth_stream)
-        print("Depth Sensor Intrinsics:")
-        print(f"Width: {depth_intrinsics.width}")
-        print(f"Height: {depth_intrinsics.height}")
-        print(f"PPX: {depth_intrinsics.ppx}")
-        print(f"PPY: {depth_intrinsics.ppy}")
-        print(f"FX: {depth_intrinsics.fx}")
-        print(f"FY: {depth_intrinsics.fy}")
-        print(f"Distortion Model: {depth_intrinsics.model}")
-        print(f"Distortion Coeffs: {depth_intrinsics.coeffs}")
-
-        # Get and print color sensor intrinsics
         color_intrinsics = get_intrinsics(color_stream)
-        print("Color Sensor Intrinsics:")
-        print(f"Width: {color_intrinsics.width}")
-        print(f"Height: {color_intrinsics.height}")
-        print(f"PPX: {color_intrinsics.ppx}")
-        print(f"PPY: {color_intrinsics.ppy}")
-        print(f"FX: {color_intrinsics.fx}")
-        print(f"FY: {color_intrinsics.fy}")
-        print(f"Distortion Model: {color_intrinsics.model}")
-        print(f"Distortion Coeffs: {color_intrinsics.coeffs}")
-
-        # Get and print extrinsics
         extrinsics = get_extrinsics(depth_stream, color_stream)
-        print("Extrinsics from Depth to Color:")
-        print(f"Rotation: {extrinsics.rotation}")
-        print(f"Translation: {extrinsics.translation}")
+        
+        # Generate YAML config file
+        generate_yaml_config(depth_intrinsics, color_intrinsics, extrinsics)
 
     finally:
         # Stop streaming
