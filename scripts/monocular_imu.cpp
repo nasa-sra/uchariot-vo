@@ -8,6 +8,7 @@
 #include <sstream>
 #include <sophus/se3.hpp>
 #include <librealsense2/rs.hpp> // Add RealSense header
+#include <Eigen/Dense>
 
 // Function to clear the line in terminal
 void clearLine() {
@@ -21,6 +22,13 @@ const Eigen::Vector3f gravity(0.0, 0.0, 9.81);
 // Function to apply rotation to the gravity vector
 Eigen::Vector3f rotateGravityVector(const Eigen::Vector3f& gravity, const Eigen::Matrix3f& rotation) {
     return rotation * gravity;
+}
+
+// Function to update the rotation matrix based on gyro data (placeholder)
+Eigen::Matrix3f updateRotationMatrix(const Eigen::Vector3f& gyro, float delta_t, const Eigen::Matrix3f& current_rotation) {
+    // Placeholder implementation, use integration of gyro data to update the rotation matrix
+    // For simplicity, this example assumes no change
+    return current_rotation;
 }
 
 int main(int argc, char** argv) {
@@ -59,7 +67,7 @@ int main(int argc, char** argv) {
     int frame_count = 0;
 
     // Define rotation matrix if needed to adjust for IMU orientation
-    Eigen::Matrix3f rotation_matrix = Eigen::Matrix3f::Identity();  // Adjust this matrix as needed
+    Eigen::Matrix3f rotation_matrix = Eigen::Matrix3f::Identity();  // Initial rotation matrix
 
     while (true) {
         // Wait for the next set of frames
@@ -97,11 +105,17 @@ int main(int argc, char** argv) {
         if (gyro_frame && accel_frame) {
             auto accel = accel_frame.as<rs2::motion_frame>();
             auto accel_data = accel.get_motion_data();
+            auto gyro = gyro_frame.as<rs2::motion_frame>();
+            auto gyro_data = gyro.get_motion_data();
 
-            // Convert accelerometer data to Eigen vector
+            // Convert accelerometer and gyro data to Eigen vectors
             Eigen::Vector3f accel_vec(accel_data.x, accel_data.y, accel_data.z);
+            Eigen::Vector3f gyro_vec(gyro_data.x, gyro_data.y, gyro_data.z);
 
-            // Adjust gravity vector if necessary
+            // Update rotation matrix based on gyro data
+            rotation_matrix = updateRotationMatrix(gyro_vec, frame_time, rotation_matrix);
+
+            // Adjust gravity vector
             Eigen::Vector3f adjusted_gravity = rotateGravityVector(gravity, rotation_matrix);
 
             // Compensate for gravity in the accelerometer data
