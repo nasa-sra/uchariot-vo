@@ -1,0 +1,87 @@
+%YAML:1.0
+
+#--------------------------------------------------------------------------------------------
+# Camera Parameters. Adjust them!
+#--------------------------------------------------------------------------------------------
+File.version: "1.0"
+
+Camera.type: "PinHole"
+
+# Right Camera calibration and distortion parameters (OpenCV)
+Camera1.fx: 
+Camera1.fy: 
+Camera1.cx: 
+Camera1.cy: 
+
+# distortion parameters
+Camera1.k1: 
+Camera1.k2: 
+Camera1.p1: 
+Camera1.p2: 
+
+# Camera resolution
+Camera.width: 
+Camera.height: 
+
+# Camera frames per second 
+Camera.fps: 
+
+# Color order of the images (0: BGR, 1: RGB. It is ignored if images are grayscale)
+Camera.RGB: 1
+
+Stereo.ThDepth: 
+Stereo.b: 
+
+# Depth map values factor
+RGBD.DepthMapFactor: 
+
+# Transformation from body-frame (imu) to left camera
+IMU.T_b_c1: !!opencv-matrix
+   rows: 
+   cols: 
+   dt: f
+   data: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+
+# Do not insert KFs when recently lost
+IMU.InsertKFsWhenLost: 
+
+# IMU noise (Use those from VINS-mono)
+IMU.NoiseGyro: 
+IMU.NoiseAcc: 
+IMU.GyroWalk: 
+IMU.AccWalk: 
+IMU.Frequency: 
+
+#--------------------------------------------------------------------------------------------
+# ORB Parameters
+#--------------------------------------------------------------------------------------------
+# ORB Extractor: Number of features per image
+ORBextractor.nFeatures: 
+
+# ORB Extractor: Scale factor between levels in the scale pyramid 	
+ORBextractor.scaleFactor: 
+
+# ORB Extractor: Number of levels in the scale pyramid	
+ORBextractor.nLevels: 
+
+# ORB Extractor: Fast threshold
+# Image is divided in a grid. At each cell FAST are extracted imposing a minimum response.
+# Firstly we impose iniThFAST. If no corners are detected we impose a lower value minThFAST
+# You can lower these values if your images have low contrast			
+ORBextractor.iniThFAST: 
+ORBextractor.minThFAST: 
+
+#--------------------------------------------------------------------------------------------
+# Viewer Parameters
+#--------------------------------------------------------------------------------------------
+Viewer.KeyFrameSize: 
+Viewer.KeyFrameLineWidth: 
+Viewer.GraphLineWidth: 
+Viewer.PointSize: 
+Viewer.CameraSize: 
+Viewer.CameraLineWidth: 
+Viewer.ViewpointX: 
+Viewer.ViewpointY: 
+Viewer.ViewpointZ: 
+Viewer.ViewpointF: 

@@ -191,15 +191,15 @@ def calculate(id_):
     p1 = distortion[0, 2]
     p2 = distortion[0, 3]
 
-    print(f"\nCamera{id_} Parameters:")
-    print(f"Camera{id_}.fx: {fx}")
-    print(f"Camera{id_}.fy: {fy}")
-    print(f"Camera{id_}.cx: {cx}")
-    print(f"Camera{id_}.cy: {cy}\n")
-    print(f"Camera{id_}.k1: {k1}")
-    print(f"Camera{id_}.k2: {k2}")
-    print(f"Camera{id_}.p1: {p1}")
-    print(f"Camera{id_}.p2: {p2}")
+    print(f"\nCamera1 Parameters:")
+    print(f"Camera1.fx: {fx}")
+    print(f"Camera1.fy: {fy}")
+    print(f"Camera1.cx: {cx}")
+    print(f"Camera1.cy: {cy}\n")
+    print(f"Camera1.k1: {k1}")
+    print(f"Camera1.k2: {k2}")
+    print(f"Camera1.p1: {p1}")
+    print(f"Camera1.p2: {p2}")
 
     return matrix, distortion
 
