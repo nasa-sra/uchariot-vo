@@ -52,7 +52,11 @@ def generate_yaml_config(depth_intrinsics, color_intrinsics, extrinsics):
             }
         }
     }
-    
+
+    # Print YAML content
+    print("Generated YAML Configuration:")
+    print(yaml.dump(config, default_flow_style=False))
+
     # Write to YAML file
     with open('orb_slam_config.yaml', 'w') as file:
         yaml.dump(config, file, default_flow_style=False)
@@ -80,7 +84,7 @@ def main():
         color_intrinsics = get_intrinsics(color_stream)
         extrinsics = get_extrinsics(depth_stream, color_stream)
         
-        # Generate YAML config file
+        # Print and generate YAML config file
         generate_yaml_config(depth_intrinsics, color_intrinsics, extrinsics)
 
     finally:
