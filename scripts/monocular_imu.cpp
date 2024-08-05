@@ -7,8 +7,97 @@
 #include <iomanip>
 #include <sstream>
 #include <sophus/se3.hpp>
-#include <librealsense2/rs.hpp> // Add RealSense header
-#include <Eigen/Dense>
+#include <librealsense2/rs.hpp>
+#include <librealsense2/hpp/rs_context.hpp>
+
+class Realsense {
+public:
+    Realsense() {
+        if (!IsIMUValid()) {
+            std::cerr << "Device supporting IMU not found" << std::endl;
+            throw std::runtime_error("IMU device not found");
+        }
+
+        cfg.enable_stream(RS2_STREAM_ACCEL, RS2_FORMAT_MOTION_XYZ32F);
+        cfg.enable_stream(RS2_STREAM_GYRO, RS2_FORMAT_MOTION_XYZ32F);
+
+        profile = pipe.start(cfg, [&](rs2::frame frame) {
+            auto motion = frame.as<rs2::motion_frame>();
+            if (motion) {
+                if (motion.get_profile().stream_type() == RS2_STREAM_GYRO) {
+                    double ts = motion.get_timestamp();
+                    rs2_vector gyro_data = motion.get_motion_data();
+                    // Process the gyro data with your algorithm if needed
+                } else if (motion.get_profile().stream_type() == RS2_STREAM_ACCEL) {
+                    rs2_vector accel_data = motion.get_motion_data();
+                    // Process the accel data with your algorithm if needed
+                }
+            }
+        });
+    }
+
+    ~Realsense() {
+        Stop();
+    }
+
+    bool IsIMUValid() {
+        bool found_gyro = false;
+        bool found_accel = false;
+        rs2::context ctx;
+        for (auto dev : ctx.query_devices()) {
+            for (auto sensor : dev.query_sensors()) {
+                for (auto profile : sensor.get_stream_profiles()) {
+                    if (profile.stream_type() == RS2_STREAM_GYRO)
+                        found_gyro = true;
+
+                    if (profile.stream_type() == RS2_STREAM_ACCEL)
+                        found_accel = true;
+                }
+            }
+            if (found_gyro && found_accel)
+                break;
+        }
+        return found_gyro && found_accel;
+    }
+
+    void Update() {
+        frameset = pipe.wait_for_frames();
+    }
+
+    void Stop() {
+        pipe.stop();
+    }
+
+    rs2::frameset get_frames() const {
+        return frameset;
+    }
+
+    std::pair<rs2_vector, rs2_vector> get_imu_data() const {
+        rs2_vector accel_data{0, 0, 0};
+        rs2_vector gyro_data{0, 0, 0};
+
+        auto accel_frame = frameset.first_or_default(RS2_STREAM_ACCEL);
+        auto gyro_frame = frameset.first_or_default(RS2_STREAM_GYRO);
+
+        if (accel_frame) {
+            auto accel_motion = accel_frame.as<rs2::motion_frame>();
+            accel_data = accel_motion.get_motion_data();
+        }
+
+        if (gyro_frame) {
+            auto gyro_motion = gyro_frame.as<rs2::motion_frame>();
+            gyro_data = gyro_motion.get_motion_data();
+        }
+
+        return {accel_data, gyro_data};
+    }
+
+private:
+    rs2::pipeline pipe;
+    rs2::config cfg;
+    rs2::pipeline_profile profile;
+    rs2::frameset frameset;
+};
 
 int main(int argc, char** argv) {
     if (argc != 3) {
@@ -28,16 +117,17 @@ int main(int argc, char** argv) {
     // Initialize ORB-SLAM3 system
     ORB_SLAM3::System SLAM(voc_file, settings_file, ORB_SLAM3::System::MONOCULAR, true);
 
-    // Initialize RealSense pipeline
-    rs2::pipeline pipe;
-    rs2::config cfg;
-    cfg.enable_stream(RS2_STREAM_COLOR, 640, 480, RS2_FORMAT_BGR8, 30);
-    cfg.enable_stream(RS2_STREAM_ACCEL, RS2_FORMAT_MOTION_XYZ32F); // Enable IMU accelerometer stream
-    cfg.enable_stream(RS2_STREAM_GYRO, RS2_FORMAT_MOTION_XYZ32F); // Enable IMU gyroscope stream
-    pipe.start(cfg);
+    // Initialize RealSense
+    Realsense realsense;
+
+    // Check if the RealSense IMU is valid
+    if (!realsense.IsIMUValid()) {
+        std::cerr << "Device supporting IMU not found" << std::endl;
+        return -1;
+    }
 
     cv::Mat frame;
-    cv::cuda::GpuMat d_frame, d_resized_frame, d_gray_frame;
+    cv::cuda::GpuMat d_frame, d_gray_frame;
     double timestamp = 0;
     double fps = 30; // Assuming 30 FPS, adjust if needed
     double frame_time = 1.0 / fps;
@@ -46,15 +136,11 @@ int main(int argc, char** argv) {
     int frame_count = 0;
 
     while (true) {
-        // Wait for the next set of frames
-        rs2::frameset frames = pipe.wait_for_frames();
+        // Update the RealSense to capture frames
+        realsense.Update();
 
         // Get the color frame
-        rs2::frame color_frame = frames.get_color_frame();
-
-        // Get the IMU frames
-        rs2::frame accel_frame = frames.first_or_default(RS2_STREAM_ACCEL);
-        rs2::frame gyro_frame = frames.first_or_default(RS2_STREAM_GYRO);
+        rs2::frame color_frame = realsense.get_frames().get_color_frame();
 
         // Convert RealSense frame to OpenCV Mat
         frame = cv::Mat(cv::Size(640, 480), CV_8UC3, (void*)color_frame.get_data(), cv::Mat::AUTO_STEP);
@@ -87,21 +173,14 @@ int main(int argc, char** argv) {
         // Print the position text in an updating line at the bottom of the terminal
         std::cout << "\r" << position_text << std::flush;
 
-        // Process IMU data if available
-        if (accel_frame && gyro_frame) {
-            auto accel = rs2::motion_frame(accel_frame);
-            auto gyro = rs2::motion_frame(gyro_frame);
+        // Process and display IMU data if available
+        auto imu_data = realsense.get_imu_data();
+        std::ostringstream imu_stream;
+        imu_stream << "IMU Accel (m/s²): X=" << imu_data.first.x << " Y=" << imu_data.first.y << " Z=" << imu_data.first.z
+                   << " | Gyro (rad/s): X=" << imu_data.second.x << " Y=" << imu_data.second.y << " Z=" << imu_data.second.z;
+        std::string imu_text = imu_stream.str();
 
-            rs2_vector accel_data = accel.get_motion_data();
-            rs2_vector gyro_data = gyro.get_motion_data();
-
-            std::ostringstream imu_stream;
-            imu_stream << "IMU Accel (m/s²): X=" << accel_data.x << " Y=" << accel_data.y << " Z=" << accel_data.z
-                       << " | Gyro (rad/s): X=" << gyro_data.x << " Y=" << gyro_data.y << " Z=" << gyro_data.z;
-            std::string imu_text = imu_stream.str();
-
-            std::cout << "\r" << imu_text << std::flush;
-        }
+        std::cout << "\r" << imu_text << std::flush;
 
         // Optionally display the frame
         #ifdef DISPLAY_FRAMES
@@ -125,9 +204,9 @@ int main(int argc, char** argv) {
         }
     }
 
-    // Shutdown ORB-SLAM3 and stop the RealSense pipeline
+    // Shutdown ORB-SLAM3 and stop the RealSense
     SLAM.Shutdown();
-    pipe.stop();
+    realsense.Stop();
 
     return 0;
 }
