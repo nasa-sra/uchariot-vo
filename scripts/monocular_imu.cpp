@@ -7,6 +7,7 @@
 #include <iomanip>
 #include <sstream>
 #include <sophus/se3.hpp>
+#include <librealsense2/rs.hpp>
 
 int main(int argc, char** argv) {
     if (argc != 3) {
@@ -14,7 +15,6 @@ int main(int argc, char** argv) {
         return -1;
     }
 
-    // Check for CUDA device
     if (cv::cuda::getCudaEnabledDeviceCount() == 0) {
         std::cerr << "No CUDA capable devices found!" << std::endl;
         return -1;
@@ -24,53 +24,60 @@ int main(int argc, char** argv) {
     std::string settings_file = argv[2];
 
     // Initialize ORB-SLAM3 system
-    ORB_SLAM3::System SLAM(voc_file, settings_file, ORB_SLAM3::System::MONOCULAR, true);
+    ORB_SLAM3::System SLAM(voc_file, settings_file, ORB_SLAM3::System::IMU_MONOCULAR, true);
 
-    // Open the camera
-    cv::VideoCapture cap(0); // Use 0 for default camera
-    if (!cap.isOpened()) {
-        std::cerr << "Failed to open camera!" << std::endl;
-        return -1;
-    }
-
-    // Define the target resolution
-    int target_width = 640;
-    int target_height = 480;
+    // Initialize RealSense pipeline
+    rs2::pipeline pipe;
+    rs2::config cfg;
+    cfg.enable_stream(RS2_STREAM_COLOR, 640, 480, RS2_FORMAT_BGR8, 30);
+    cfg.enable_stream(RS2_STREAM_ACCEL, RS2_FORMAT_MOTION_XYZ32F, 250);  // Typical IMU rate
+    cfg.enable_stream(RS2_STREAM_GYRO, RS2_FORMAT_MOTION_XYZ32F, 400);   // Typical IMU rate
+    pipe.start(cfg);
 
     cv::Mat frame;
     cv::cuda::GpuMat d_frame, d_resized_frame, d_gray_frame;
     double timestamp = 0;
-    double fps = cap.get(cv::CAP_PROP_FPS);
+    double fps = 30;
     double frame_time = 1.0 / fps;
 
     auto start = std::chrono::high_resolution_clock::now();
     int frame_count = 0;
 
+    std::vector<ORB_SLAM3::IMU::Point> imu_data;
+
     while (true) {
-        if (!cap.read(frame)) {
-            std::cerr << "Failed to grab frame!" << std::endl;
-            break;
-        }
+        rs2::frameset frames = pipe.wait_for_frames();
 
-        // Resize the frame to the target resolution
-        cv::resize(frame, frame, cv::Size(target_width, target_height));
+        // Get color and IMU frames
+        auto color_frame = frames.get_color_frame();
+        auto accel_frame = frames.first(RS2_STREAM_ACCEL);
+        auto gyro_frame = frames.first(RS2_STREAM_GYRO);
 
-        // Upload frame to GPU
+        // Get IMU data
+        rs2_vector accel_data = accel_frame.as<rs2::motion_frame>().get_motion_data();
+        rs2_vector gyro_data = gyro_frame.as<rs2::motion_frame>().get_motion_data();
+
+        // Convert RealSense frame to OpenCV Mat
+        frame = cv::Mat(cv::Size(640, 480), CV_8UC3, (void*)color_frame.get_data(), cv::Mat::AUTO_STEP);
+
+        // Upload frame to GPU and convert to grayscale
         d_frame.upload(frame);
-
-        // Convert to grayscale on GPU
-        if (frame.channels() == 3) {
-            cv::cuda::cvtColor(d_frame, d_gray_frame, cv::COLOR_BGR2GRAY);
-        } else {
-            d_gray_frame = d_frame;
-        }
+        cv::cuda::cvtColor(d_frame, d_gray_frame, cv::COLOR_BGR2GRAY);
 
         // Download grayscale frame from GPU
         cv::Mat gray_frame;
         d_gray_frame.download(gray_frame);
 
-        // Pass the frame to ORB-SLAM3 and get the current pose
-        Sophus::SE3f pose = SLAM.TrackMonocular(gray_frame, timestamp);
+        // Prepare IMU data for ORB-SLAM3
+        imu_data.push_back(ORB_SLAM3::IMU::Point(gyro_data.x, gyro_data.y, gyro_data.z,
+                                                 accel_data.x, accel_data.y, accel_data.z,
+                                                 timestamp));
+
+        // Pass the frame and IMU data to ORB-SLAM3 and get the current pose
+        Sophus::SE3f pose = SLAM.TrackMonocular(gray_frame, timestamp, imu_data);
+
+        // Clear IMU data for the next iteration
+        imu_data.clear();
 
         // Extract position from the pose
         Eigen::Vector3f translation = pose.translation();
@@ -109,8 +116,9 @@ int main(int argc, char** argv) {
         }
     }
 
-    // Shutdown ORB-SLAM3
+    // Shutdown ORB-SLAM3 and stop the RealSense pipeline
     SLAM.Shutdown();
+    pipe.stop();
 
     return 0;
 }
