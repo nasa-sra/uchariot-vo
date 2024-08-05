@@ -20,25 +20,25 @@ Camera1.p1:
 Camera1.p2: 
 
 # Camera resolution
-Camera.width: 
-Camera.height: 
+Camera.width: 640
+Camera.height: 480
 
 # Camera frames per second 
-Camera.fps: 
+Camera.fps: 30
 
 # Color order of the images (0: BGR, 1: RGB. It is ignored if images are grayscale)
 Camera.RGB: 1
 
-Stereo.ThDepth: 
-Stereo.b: 
+Stereo.ThDepth: 0.4
+Stereo.b: 0.095
 
 # Depth map values factor
-RGBD.DepthMapFactor: 
+RGBD.DepthMapFactor: 1000
 
 # Transformation from body-frame (imu) to left camera
 IMU.T_b_c1: !!opencv-matrix
-   rows: 
-   cols: 
+   rows: 4
+   cols: 4
    dt: f
    data: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
