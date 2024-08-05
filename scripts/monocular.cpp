@@ -7,6 +7,7 @@
 #include <iomanip>
 #include <sstream>
 #include <sophus/se3.hpp>
+#include <librealsense2/rs.hpp> // Add RealSense header
 
 int main(int argc, char** argv) {
     if (argc != 3) {
@@ -26,44 +27,36 @@ int main(int argc, char** argv) {
     // Initialize ORB-SLAM3 system
     ORB_SLAM3::System SLAM(voc_file, settings_file, ORB_SLAM3::System::MONOCULAR, true);
 
-    // Open the camera
-    cv::VideoCapture cap(0); // Use 0 for default camera
-    if (!cap.isOpened()) {
-        std::cerr << "Failed to open camera!" << std::endl;
-        return -1;
-    }
-
-    // Define the target resolution
-    int target_width = 640;
-    int target_height = 480;
+    // Initialize RealSense pipeline
+    rs2::pipeline pipe;
+    rs2::config cfg;
+    cfg.enable_stream(RS2_STREAM_COLOR, 640, 480, RS2_FORMAT_BGR8, 30);
+    pipe.start(cfg);
 
     cv::Mat frame;
     cv::cuda::GpuMat d_frame, d_resized_frame, d_gray_frame;
     double timestamp = 0;
-    double fps = cap.get(cv::CAP_PROP_FPS);
+    double fps = 30; // Assuming 30 FPS, adjust if needed
     double frame_time = 1.0 / fps;
 
     auto start = std::chrono::high_resolution_clock::now();
     int frame_count = 0;
 
     while (true) {
-        if (!cap.read(frame)) {
-            std::cerr << "Failed to grab frame!" << std::endl;
-            break;
-        }
+        // Wait for the next set of frames
+        rs2::frameset frames = pipe.wait_for_frames();
 
-        // Resize the frame to the target resolution
-        cv::resize(frame, frame, cv::Size(target_width, target_height));
+        // Get the color frame
+        rs2::frame color_frame = frames.get_color_frame();
+
+        // Convert RealSense frame to OpenCV Mat
+        frame = cv::Mat(cv::Size(640, 480), CV_8UC3, (void*)color_frame.get_data(), cv::Mat::AUTO_STEP);
 
         // Upload frame to GPU
         d_frame.upload(frame);
 
         // Convert to grayscale on GPU
-        if (frame.channels() == 3) {
-            cv::cuda::cvtColor(d_frame, d_gray_frame, cv::COLOR_BGR2GRAY);
-        } else {
-            d_gray_frame = d_frame;
-        }
+        cv::cuda::cvtColor(d_frame, d_gray_frame, cv::COLOR_BGR2GRAY);
 
         // Download grayscale frame from GPU
         cv::Mat gray_frame;
@@ -109,8 +102,9 @@ int main(int argc, char** argv) {
         }
     }
 
-    // Shutdown ORB-SLAM3
+    // Shutdown ORB-SLAM3 and stop the RealSense pipeline
     SLAM.Shutdown();
+    pipe.stop();
 
     return 0;
 }
