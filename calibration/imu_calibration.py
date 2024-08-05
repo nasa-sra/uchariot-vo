@@ -47,8 +47,8 @@ def generate_yaml_config(depth_intrinsics, color_intrinsics, extrinsics):
         },
         'Extrinsics': {
             'DepthToColor': {
-                'Rotation': extrinsics.rotation.tolist(),
-                'Translation': extrinsics.translation.tolist()
+                'Rotation': extrinsics.rotation,  # Directly using list-like format
+                'Translation': extrinsics.translation  # Directly using list-like format
             }
         }
     }
