@@ -7,64 +7,10 @@
 #include <iomanip>
 #include <sstream>
 #include <sophus/se3.hpp>
-#include <curl/curl.h>
-#include <nlohmann/json.hpp>
-
-using json = nlohmann::json;
-
-// Base64 decoding function
-std::string base64_decode(const std::string& in) {
-    std::string out;
-    std::vector<int> T(256, -1);
-    for (int i = 0; i < 64; i++) T["ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"[i]] = i;
-
-    int val = 0, valb = -8;
-    for (unsigned char c : in) {
-        if (T[c] == -1) break;
-        val = (val << 6) + T[c];
-        valb += 6;
-        if (valb >= 0) {
-            out.push_back(char((val >> valb) & 0xFF));
-            valb -= 8;
-        }
-    }
-    return out;
-}
-
-size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::string* output) {
-    size_t total_size = size * nmemb;
-    output->append((char*)contents, total_size);
-    return total_size;
-}
-
-cv::Mat fetch_frame(const std::string& url) {
-    CURL* curl = curl_easy_init();
-    std::string response;
-    
-    if(curl) {
-        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
-        CURLcode res = curl_easy_perform(curl);
-        curl_easy_cleanup(curl);
-
-        if(res != CURLE_OK) {
-            std::cerr << "curl_easy_perform() failed: " << curl_easy_strerror(res) << std::endl;
-            return cv::Mat();
-        }
-    }
-
-    json j = json::parse(response);
-    std::string base64_frame = j["frame"];
-    std::string decoded_data = base64_decode(base64_frame);
-    std::vector<uchar> data(decoded_data.begin(), decoded_data.end());
-    cv::Mat frame = cv::imdecode(data, cv::IMREAD_COLOR);
-    return frame;
-}
 
 int main(int argc, char** argv) {
-    if (argc != 4) {
-        std::cerr << "Usage: ./YourORB_SLAM3Executable <path_to_vocabulary_file> <path_to_settings_file> <stream_url>" << std::endl;
+    if (argc != 3) {
+        std::cerr << "Usage: ./YourORB_SLAM3Executable <path_to_vocabulary_file> <path_to_settings_file>" << std::endl;
         return -1;
     }
 
@@ -76,28 +22,33 @@ int main(int argc, char** argv) {
 
     std::string voc_file = argv[1];
     std::string settings_file = argv[2];
-    std::string stream_url = std::string(argv[3]) + "/frame";
 
     // Initialize ORB-SLAM3 system
     ORB_SLAM3::System SLAM(voc_file, settings_file, ORB_SLAM3::System::MONOCULAR, true);
 
+    // Open the camera
+    cv::VideoCapture cap(0); // Use 0 for default camera
+    if (!cap.isOpened()) {
+        std::cerr << "Failed to open camera!" << std::endl;
+        return -1;
+    }
+
     // Define the target resolution
-    int target_width = 1280;
-    int target_height = 720;
+    int target_width = 640;
+    int target_height = 480;
 
     cv::Mat frame;
     cv::cuda::GpuMat d_frame, d_resized_frame, d_gray_frame;
     double timestamp = 0;
-    double fps = 60.0;  // Assume 30 FPS for the stream
+    double fps = cap.get(cv::CAP_PROP_FPS);
     double frame_time = 1.0 / fps;
 
     auto start = std::chrono::high_resolution_clock::now();
     int frame_count = 0;
 
     while (true) {
-        frame = fetch_frame(stream_url);
-        if (frame.empty()) {
-            std::cerr << "Failed to grab frame from stream!" << std::endl;
+        if (!cap.read(frame)) {
+            std::cerr << "Failed to grab frame!" << std::endl;
             break;
         }
 

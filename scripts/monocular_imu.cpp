@@ -1,98 +1,116 @@
 #include <iostream>
-#include <string>
-#include <curl/curl.h>
-#include <nlohmann/json.hpp> // For JSON parsing
-#include <thread> // For std::this_thread::sleep_for
-#include <chrono> // For std::chrono::milliseconds
-#include <array>
+#include <opencv2/opencv.hpp>
+#include <opencv2/core/cuda.hpp>
+#include <opencv2/cudaimgproc.hpp>
+#include "System.h"
+#include <chrono>
+#include <iomanip>
+#include <sstream>
+#include <sophus/se3.hpp>
 
-using json = nlohmann::json;
-
-// Callback function to handle the data fetched by libcurl
-size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
-    ((std::string*)userp)->append((char*)contents, size * nmemb);
-    return size * nmemb;
-}
-
-// Integration parameters
-const double dt = 0.1; // Time step in seconds, adjust based on your update frequency
-
-class IMUData {
-public:
-    std::array<double, 3> pos = {0, 0, 0};
-    std::array<double, 3> vel = {0, 0, 0};
-    std::array<double, 3> accel = {0, 0, 0};
-    std::array<double, 3> prev_accel = {0, 0, 0};
-
-    void update(const std::array<double, 3>& new_accel) {
-        for (int i = 0; i < 3; ++i) {
-            // Verlet integration for position
-            double new_pos = pos[i] + vel[i] * dt + 0.5 * accel[i] * dt * dt;
-            
-            // Update velocity using average acceleration
-            vel[i] += 0.5 * (accel[i] + new_accel[i]) * dt;
-            
-            // Update position and acceleration
-            pos[i] = new_pos;
-            prev_accel[i] = accel[i];
-            accel[i] = new_accel[i];
-        }
+int main(int argc, char** argv) {
+    if (argc != 3) {
+        std::cerr << "Usage: ./YourORB_SLAM3Executable <path_to_vocabulary_file> <path_to_settings_file>" << std::endl;
+        return -1;
     }
-};
 
-void fetchSensorData(IMUData& imu_data) {
-    CURL* curl;
-    CURLcode res;
-    std::string readBuffer;
-    std::string url = "http://192.168.2.31:8000/imu_data";
-
-    curl_global_init(CURL_GLOBAL_DEFAULT);
-    curl = curl_easy_init();
-    if(curl) {
-        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
-
-        res = curl_easy_perform(curl);
-        if(res != CURLE_OK) {
-            fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
-        } else {
-            // Parse JSON data
-            try {
-                auto jsonData = json::parse(readBuffer);
-
-                // Extract data
-                std::array<double, 3> new_accel = {
-                    jsonData["accel_x"].get<double>(),
-                    jsonData["accel_y"].get<double>(),
-                    jsonData["accel_z"].get<double>()
-                };
-
-                // Update IMU data using Verlet integration
-                imu_data.update(new_accel);
-
-            } catch (const json::exception& e) {
-                std::cerr << "Error parsing JSON: " << e.what() << std::endl;
-            }
-        }
-        curl_easy_cleanup(curl);
+    // Check for CUDA device
+    if (cv::cuda::getCudaEnabledDeviceCount() == 0) {
+        std::cerr << "No CUDA capable devices found!" << std::endl;
+        return -1;
     }
-    curl_global_cleanup();
-}
 
-int main() {
-    IMUData imu_data;
+    std::string voc_file = argv[1];
+    std::string settings_file = argv[2];
+
+    // Initialize ORB-SLAM3 system
+    ORB_SLAM3::System SLAM(voc_file, settings_file, ORB_SLAM3::System::MONOCULAR, true);
+
+    // Open the camera
+    cv::VideoCapture cap(0); // Use 0 for default camera
+    if (!cap.isOpened()) {
+        std::cerr << "Failed to open camera!" << std::endl;
+        return -1;
+    }
+
+    // Define the target resolution
+    int target_width = 640;
+    int target_height = 480;
+
+    cv::Mat frame;
+    cv::cuda::GpuMat d_frame, d_resized_frame, d_gray_frame;
+    double timestamp = 0;
+    double fps = cap.get(cv::CAP_PROP_FPS);
+    double frame_time = 1.0 / fps;
+
+    auto start = std::chrono::high_resolution_clock::now();
+    int frame_count = 0;
 
     while (true) {
-        fetchSensorData(imu_data);
-        std::cout << "\rPosition (x, y, z): (" 
-                  << imu_data.pos[0] << ", " << imu_data.pos[1] << ", " << imu_data.pos[2] << ") | "
-                  << "Velocity (x, y, z): (" 
-                  << imu_data.vel[0] << ", " << imu_data.vel[1] << ", " << imu_data.vel[2] << ") | "
-                  << "Acceleration (x, y, z): (" 
-                  << imu_data.accel[0] << ", " << imu_data.accel[1] << ", " << imu_data.accel[2] << ")"
-                  << std::flush;
-        std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int>(dt * 1000)));
+        if (!cap.read(frame)) {
+            std::cerr << "Failed to grab frame!" << std::endl;
+            break;
+        }
+
+        // Resize the frame to the target resolution
+        cv::resize(frame, frame, cv::Size(target_width, target_height));
+
+        // Upload frame to GPU
+        d_frame.upload(frame);
+
+        // Convert to grayscale on GPU
+        if (frame.channels() == 3) {
+            cv::cuda::cvtColor(d_frame, d_gray_frame, cv::COLOR_BGR2GRAY);
+        } else {
+            d_gray_frame = d_frame;
+        }
+
+        // Download grayscale frame from GPU
+        cv::Mat gray_frame;
+        d_gray_frame.download(gray_frame);
+
+        // Pass the frame to ORB-SLAM3 and get the current pose
+        Sophus::SE3f pose = SLAM.TrackMonocular(gray_frame, timestamp);
+
+        // Extract position from the pose
+        Eigen::Vector3f translation = pose.translation();
+        float x = translation.x();
+        float y = translation.y();
+        float z = translation.z();
+
+        // Create a string with the current position
+        std::ostringstream position_stream;
+        position_stream << std::fixed << std::setprecision(2)
+                        << "Position (m): X=" << x << " Y=" << y << " Z=" << z;
+        std::string position_text = position_stream.str();
+
+        // Print the position text in an updating line at the bottom of the terminal
+        std::cout << "\r" << position_text << std::flush;
+
+        // Optionally display the frame
+        #ifdef DISPLAY_FRAMES
+        cv::putText(frame, position_text, cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 255, 0), 2);
+        cv::imshow("Frame", frame);
+        if (cv::waitKey(1) == 27) { // Exit on 'ESC' key
+            break;
+        }
+        #endif
+
+        timestamp += frame_time;
+        frame_count++;
+
+        auto now = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
+        if (duration >= 1000) {
+            double current_fps = frame_count / (duration / 1000.0);
+            std::cout << "\rFPS: " << current_fps << std::flush;
+            start = now;
+            frame_count = 0;
+        }
     }
+
+    // Shutdown ORB-SLAM3
+    SLAM.Shutdown();
+
     return 0;
 }
