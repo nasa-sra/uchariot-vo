@@ -9,6 +9,12 @@
 #include <sophus/se3.hpp>
 #include <librealsense2/rs.hpp> // Add RealSense header
 
+// Function to clear the line in terminal
+void clearLine() {
+    std::cout << "\033[2K";  // ANSI escape code to clear the current line
+    std::cout << "\r";      // Move the cursor back to the beginning of the line
+}
+
 int main(int argc, char** argv) {
     if (argc != 3) {
         std::cerr << "Usage: ./YourORB_SLAM3Executable <path_to_vocabulary_file> <path_to_settings_file>" << std::endl;
@@ -127,10 +133,4 @@ int main(int argc, char** argv) {
     pipe.stop();
 
     return 0;
-}
-
-// Function to clear the line in terminal
-void clearLine() {
-    std::cout << "\033[2K";  // ANSI escape code to clear the current line
-    std::cout << "\r";      // Move the cursor back to the beginning of the line
 }
