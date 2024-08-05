@@ -8,28 +8,9 @@
 #include <sstream>
 #include <sophus/se3.hpp>
 #include <librealsense2/rs.hpp> // Add RealSense header
-#include <Eigen/Dense>
-
-// Function to clear the line in terminal
-void clearLine() {
-    std::cout << "\033[2K";  // ANSI escape code to clear the current line
-    std::cout << "\r";      // Move the cursor back to the beginning of the line
-}
-
-// Gravity vector (m/s^2) assuming z-axis is up for IMU
-const Eigen::Vector3f gravity(0.0, 0.0, 9.81);
-
-// Function to apply rotation to the gravity vector
-Eigen::Vector3f rotateGravityVector(const Eigen::Vector3f& gravity, const Eigen::Matrix3f& rotation) {
-    return rotation * gravity;
-}
-
-// Function to update the rotation matrix based on gyro data (placeholder)
-Eigen::Matrix3f updateRotationMatrix(const Eigen::Vector3f& gyro, float delta_t, const Eigen::Matrix3f& current_rotation) {
-    // Placeholder implementation, use integration of gyro data to update the rotation matrix
-    // For simplicity, this example assumes no change
-    return current_rotation;
-}
+#include <mutex>
+#include <condition_variable>
+#include <vector>
 
 int main(int argc, char** argv) {
     if (argc != 3) {
@@ -47,18 +28,18 @@ int main(int argc, char** argv) {
     std::string settings_file = argv[2];
 
     // Initialize ORB-SLAM3 system
-    ORB_SLAM3::System SLAM(voc_file, settings_file, ORB_SLAM3::System::MONOCULAR, true);
+    ORB_SLAM3::System SLAM(voc_file, settings_file, ORB_SLAM3::System::IMU_MONOCULAR, true);
 
     // Initialize RealSense pipeline
     rs2::pipeline pipe;
     rs2::config cfg;
     cfg.enable_stream(RS2_STREAM_COLOR, 640, 480, RS2_FORMAT_BGR8, 30);
-    cfg.enable_stream(RS2_STREAM_GYRO);
-    cfg.enable_stream(RS2_STREAM_ACCEL);
+    cfg.enable_stream(RS2_STREAM_ACCEL, RS2_FORMAT_MOTION_XYZ32F);
+    cfg.enable_stream(RS2_STREAM_GYRO, RS2_FORMAT_MOTION_XYZ32F);
     pipe.start(cfg);
 
     cv::Mat frame;
-    cv::cuda::GpuMat d_frame, d_gray_frame;
+    cv::cuda::GpuMat d_frame, d_resized_frame, d_gray_frame;
     double timestamp = 0;
     double fps = 30; // Assuming 30 FPS, adjust if needed
     double frame_time = 1.0 / fps;
@@ -66,8 +47,30 @@ int main(int argc, char** argv) {
     auto start = std::chrono::high_resolution_clock::now();
     int frame_count = 0;
 
-    // Define rotation matrix if needed to adjust for IMU orientation
-    Eigen::Matrix3f rotation_matrix = Eigen::Matrix3f::Identity();  // Initial rotation matrix
+    std::mutex imu_mutex;
+    std::condition_variable imu_cond;
+    std::vector<rs2_vector> v_gyro_data;
+    std::vector<double> v_gyro_timestamp;
+    std::vector<rs2_vector> v_accel_data;
+    std::vector<double> v_accel_timestamp;
+    double offset = 0;
+
+    auto imu_callback = [&](const rs2::frame& frame) {
+        std::unique_lock<std::mutex> lock(imu_mutex);
+
+        if (rs2::motion_frame m_frame = frame.as<rs2::motion_frame>()) {
+            if (m_frame.get_profile().stream_name() == "Gyro") {
+                v_gyro_data.push_back(m_frame.get_motion_data());
+                v_gyro_timestamp.push_back((m_frame.get_timestamp() + offset) * 1e-3);
+            } else if (m_frame.get_profile().stream_name() == "Accel") {
+                v_accel_data.push_back(m_frame.get_motion_data());
+                v_accel_timestamp.push_back((m_frame.get_timestamp() + offset) * 1e-3);
+            }
+        }
+    };
+
+    // Start RealSense pipeline with IMU callback
+    rs2::pipeline_profile pipe_profile = pipe.start(cfg, imu_callback);
 
     while (true) {
         // Wait for the next set of frames
@@ -75,8 +78,6 @@ int main(int argc, char** argv) {
 
         // Get the color frame
         rs2::frame color_frame = frames.get_color_frame();
-        rs2::frame gyro_frame = frames.first_or_default(RS2_STREAM_GYRO);
-        rs2::frame accel_frame = frames.first_or_default(RS2_STREAM_ACCEL);
 
         // Convert RealSense frame to OpenCV Mat
         frame = cv::Mat(cv::Size(640, 480), CV_8UC3, (void*)color_frame.get_data(), cv::Mat::AUTO_STEP);
@@ -91,8 +92,24 @@ int main(int argc, char** argv) {
         cv::Mat gray_frame;
         d_gray_frame.download(gray_frame);
 
-        // Pass the frame to ORB-SLAM3 and get the current pose
-        Sophus::SE3f pose = SLAM.TrackMonocular(gray_frame, timestamp);
+        // Synchronize IMU data with visual data
+        std::vector<ORB_SLAM3::IMU::Point> vImuMeas;
+        {
+            std::unique_lock<std::mutex> lock(imu_mutex);
+            for (size_t i = 0; i < v_gyro_timestamp.size(); ++i) {
+                if (i < v_accel_timestamp.size()) {
+                    ORB_SLAM3::IMU::Point imu_point(
+                        v_accel_data[i].x, v_accel_data[i].y, v_accel_data[i].z,
+                        v_gyro_data[i].x, v_gyro_data[i].y, v_gyro_data[i].z,
+                        v_gyro_timestamp[i]
+                    );
+                    vImuMeas.push_back(imu_point);
+                }
+            }
+        }
+
+        // Pass the frame and IMU measurements to ORB-SLAM3 and get the current pose
+        Sophus::SE3f pose = SLAM.TrackMonocular(gray_frame, timestamp, vImuMeas);
 
         // Extract position from the pose
         Eigen::Vector3f translation = pose.translation();
@@ -100,41 +117,14 @@ int main(int argc, char** argv) {
         float y = translation.y();
         float z = translation.z();
 
-        // Get IMU data if available
-        std::string imu_data;
-        if (gyro_frame && accel_frame) {
-            auto accel = accel_frame.as<rs2::motion_frame>();
-            auto accel_data = accel.get_motion_data();
-            auto gyro = gyro_frame.as<rs2::motion_frame>();
-            auto gyro_data = gyro.get_motion_data();
-
-            // Convert accelerometer and gyro data to Eigen vectors
-            Eigen::Vector3f accel_vec(accel_data.x, accel_data.y, accel_data.z);
-            Eigen::Vector3f gyro_vec(gyro_data.x, gyro_data.y, gyro_data.z);
-
-            // Update rotation matrix based on gyro data
-            rotation_matrix = updateRotationMatrix(gyro_vec, frame_time, rotation_matrix);
-
-            // Adjust gravity vector
-            Eigen::Vector3f adjusted_gravity = rotateGravityVector(gravity, rotation_matrix);
-
-            // Compensate for gravity in the accelerometer data
-            Eigen::Vector3f corrected_accel = accel_vec - adjusted_gravity;
-
-            std::ostringstream imu_stream;
-            imu_stream << "Accel - X: " << corrected_accel.x() << " Y: " << corrected_accel.y() << " Z: " << corrected_accel.z();
-            imu_data = imu_stream.str();
-        }
-
         // Create a string with the current position
         std::ostringstream position_stream;
         position_stream << std::fixed << std::setprecision(2)
                         << "Position (m): X=" << x << " Y=" << y << " Z=" << z;
         std::string position_text = position_stream.str();
 
-        // Print the position and IMU data in an updating line at the bottom of the terminal
-        clearLine();
-        std::cout << position_text << " | " << imu_data << std::flush;
+        // Print the position text in an updating line at the bottom of the terminal
+        std::cout << "\r" << position_text << std::flush;
 
         // Optionally display the frame
         #ifdef DISPLAY_FRAMES
