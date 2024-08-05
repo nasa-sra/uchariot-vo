@@ -1,9 +1,10 @@
 import pyrealsense2 as rs
 import numpy as np
 
-def get_camera_intrinsics(sensor):
+def get_intrinsics(sensor):
     # Get intrinsics of the sensor
-    intrinsics = sensor.get_stream_profiles()[0].as_video_stream_profile().get_intrinsics()
+    profile = sensor.get_stream_profiles()[0].as_video_stream_profile()
+    intrinsics = profile.get_intrinsics()
     return intrinsics
 
 def get_extrinsics(depth_sensor, color_sensor):
@@ -29,20 +30,32 @@ def main():
         depth_sensor = device.first_depth_sensor()
         color_sensor = device.first_color_sensor()
 
-        # Get and print IMU intrinsics
-        intrinsics = get_camera_intrinsics(depth_sensor)
+        # Get and print depth sensor intrinsics
+        depth_intrinsics = get_intrinsics(depth_sensor)
         print("Depth Sensor Intrinsics:")
-        print(f"Width: {intrinsics.width}")
-        print(f"Height: {intrinsics.height}")
-        print(f"PPX: {intrinsics.ppx}")
-        print(f"PPY: {intrinsics.ppy}")
-        print(f"FX: {intrinsics.fx}")
-        print(f"FY: {intrinsics.fy}")
-        print(f"Distortion Model: {intrinsics.model}")
-        print(f"Distortion Coeffs: {intrinsics.coeffs}")
+        print(f"Width: {depth_intrinsics.width}")
+        print(f"Height: {depth_intrinsics.height}")
+        print(f"PPX: {depth_intrinsics.ppx}")
+        print(f"PPY: {depth_intrinsics.ppy}")
+        print(f"FX: {depth_intrinsics.fx}")
+        print(f"FY: {depth_intrinsics.fy}")
+        print(f"Distortion Model: {depth_intrinsics.model}")
+        print(f"Distortion Coeffs: {depth_intrinsics.coeffs}")
+
+        # Get and print color sensor intrinsics
+        color_intrinsics = get_intrinsics(color_sensor)
+        print("Color Sensor Intrinsics:")
+        print(f"Width: {color_intrinsics.width}")
+        print(f"Height: {color_intrinsics.height}")
+        print(f"PPX: {color_intrinsics.ppx}")
+        print(f"PPY: {color_intrinsics.ppy}")
+        print(f"FX: {color_intrinsics.fx}")
+        print(f"FY: {color_intrinsics.fy}")
+        print(f"Distortion Model: {color_intrinsics.model}")
+        print(f"Distortion Coeffs: {color_intrinsics.coeffs}")
 
         # Get and print extrinsics
-        extrinsics = get_extrinsics(depth_sensor, color_sensor)
+        extrinsics = depth_sensor.get_extrinsics_to(color_sensor)
         print("Extrinsics from Depth to Color:")
         print(f"Rotation: {extrinsics.rotation}")
         print(f"Translation: {extrinsics.translation}")
