@@ -24,13 +24,13 @@ int main(int argc, char** argv) {
 
     rs2::pipeline pipe;
     rs2::config cfg;
-    cfg.enable_stream(RS2_STREAM_COLOR, 1280, 720, RS2_FORMAT_BGR8, 90);
+    cfg.enable_stream(RS2_STREAM_COLOR, 1280, 720, RS2_FORMAT_BGR8, 60);
     pipe.start(cfg);
 
     cv::Mat frame, gray_frame;
     cv::cuda::GpuMat d_frame, d_gray_frame;
     double timestamp = 0;
-    double fps = 90;
+    double fps = 60;
     double frame_time = 1.0 / fps;
 
     auto start = std::chrono::high_resolution_clock::now();
