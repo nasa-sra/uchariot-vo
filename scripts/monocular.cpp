@@ -27,13 +27,13 @@ int main(int argc, char** argv) {
     // Initialize RealSense pipeline
     rs2::pipeline pipe;
     rs2::config cfg;
-    cfg.enable_stream(RS2_STREAM_COLOR, 640, 480, RS2_FORMAT_BGR8, 30);
+    cfg.enable_stream(RS2_STREAM_COLOR, 1280, 720, RS2_FORMAT_BGR8, 90);
     pipe.start(cfg);
 
     cv::Mat frame;
     cv::cuda::GpuMat d_frame, d_resized_frame, d_gray_frame;
     double timestamp = 0;
-    double fps = 30; // Assuming 30 FPS, adjust if needed
+    double fps = 90; // Assuming 30 FPS, adjust if needed
     double frame_time = 1.0 / fps;
 
     auto start = std::chrono::high_resolution_clock::now();
@@ -47,7 +47,7 @@ int main(int argc, char** argv) {
         rs2::frame color_frame = frames.get_color_frame();
 
         // Convert RealSense frame to OpenCV Mat
-        frame = cv::Mat(cv::Size(640, 480), CV_8UC3, (void*)color_frame.get_data(), cv::Mat::AUTO_STEP);
+        frame = cv::Mat(cv::Size(1280, 720), CV_8UC3, (void*)color_frame.get_data(), cv::Mat::AUTO_STEP);
 
         // Upload frame to GPU
         d_frame.upload(frame);
