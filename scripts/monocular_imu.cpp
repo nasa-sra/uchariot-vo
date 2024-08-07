@@ -66,49 +66,53 @@ int main(int argc, char** argv) {
 
     // IMU callback
     auto imu_callback = [&](const rs2::frame& frame)
+{
+    std::unique_lock<std::mutex> lock(imu_mutex);
+
+    if(rs2::frameset fs = frame.as<rs2::frameset>())
     {
-        std::unique_lock<std::mutex> lock(imu_mutex);
+        rs2::video_frame color_frame = fs.get_color_frame();
 
-        if(rs2::frameset fs = frame.as<rs2::frameset>())
+        // Convert rs2::video_frame to cv::Mat
+        cv::Mat color_image(cv::Size(color_frame.get_width(), color_frame.get_height()), CV_8UC3,
+                            (void*)color_frame.get_data(), cv::Mat::AUTO_STEP);
+
+        timestamp = fs.get_timestamp() * 1e-3;
+        image_ready = true;
+
+        lock.unlock();
+        cond_image_rec.notify_all();
+    }
+    else if (rs2::motion_frame m_frame = frame.as<rs2::motion_frame>())
+    {
+        if (m_frame.get_profile().stream_name() == "Gyro")
         {
-            rs2::video_frame color_frame = fs.get_color_frame();
-            frame = cv::Mat(cv::Size(640, 480), CV_8UC3, (void*)(color_frame.get_data()), cv::Mat::AUTO_STEP);
-
-            timestamp = fs.get_timestamp() * 1e-3;
-            image_ready = true;
-
-            lock.unlock();
-            cond_image_rec.notify_all();
+            v_gyro_data.push_back(m_frame.get_motion_data());
+            v_gyro_timestamp.push_back(m_frame.get_timestamp() * 1e-3);
         }
-        else if (rs2::motion_frame m_frame = frame.as<rs2::motion_frame>())
+        else if (m_frame.get_profile().stream_name() == "Accel")
         {
-            if (m_frame.get_profile().stream_name() == "Gyro")
+            prev_accel_timestamp = current_accel_timestamp;
+            prev_accel_data = current_accel_data;
+
+            current_accel_data = m_frame.get_motion_data();
+            current_accel_timestamp = m_frame.get_timestamp() * 1e-3;
+
+            while(v_gyro_timestamp.size() > v_accel_timestamp_sync.size())
             {
-                v_gyro_data.push_back(m_frame.get_motion_data());
-                v_gyro_timestamp.push_back(m_frame.get_timestamp() * 1e-3);
-            }
-            else if (m_frame.get_profile().stream_name() == "Accel")
-            {
-                prev_accel_timestamp = current_accel_timestamp;
-                prev_accel_data = current_accel_data;
+                int index = v_accel_timestamp_sync.size();
+                double target_time = v_gyro_timestamp[index];
 
-                current_accel_data = m_frame.get_motion_data();
-                current_accel_timestamp = m_frame.get_timestamp() * 1e-3;
+                rs2_vector interp_data = interpolateMeasure(target_time, current_accel_data, current_accel_timestamp,
+                                                            prev_accel_data, prev_accel_timestamp);
 
-                while(v_gyro_timestamp.size() > v_accel_timestamp_sync.size())
-                {
-                    int index = v_accel_timestamp_sync.size();
-                    double target_time = v_gyro_timestamp[index];
-
-                    rs2_vector interp_data = interpolateMeasure(target_time, current_accel_data, current_accel_timestamp,
-                                                                prev_accel_data, prev_accel_timestamp);
-
-                    v_accel_data_sync.push_back(interp_data);
-                    v_accel_timestamp_sync.push_back(target_time);
-                }
+                v_accel_data_sync.push_back(interp_data);
+                v_accel_timestamp_sync.push_back(target_time);
             }
         }
-    };
+    }
+};
+
 
     // Start the pipeline with the callback
     pipe.start(cfg, imu_callback);
