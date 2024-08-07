@@ -7,7 +7,7 @@
 #include <iomanip>
 #include <sstream>
 #include <sophus/se3.hpp>
-#include <librealsense2/rs.hpp>
+#include <librealsense2/rs.hpp> // Add RealSense header
 
 int main(int argc, char** argv) {
     if (argc != 3) {
@@ -30,7 +30,7 @@ int main(int argc, char** argv) {
     // Initialize RealSense pipeline
     rs2::pipeline pipe;
     rs2::config cfg;
-    cfg.enable_stream(RS2_STREAM_COLOR, 1280, 720, RS2_FORMAT_BGR8, 90);
+    cfg.enable_stream(RS2_STREAM_COLOR, 640, 480, RS2_FORMAT_BGR8, 30);
     pipe.start(cfg);
 
     cv::Mat frame;
@@ -41,7 +41,6 @@ int main(int argc, char** argv) {
 
     auto start = std::chrono::high_resolution_clock::now();
     int frame_count = 0;
-    double current_fps = 0.0;
 
     while (true) {
         // Wait for the next set of frames
@@ -72,19 +71,18 @@ int main(int argc, char** argv) {
         float y = translation.y();
         float z = translation.z();
 
-        // Create a string with the current position and FPS
-        std::ostringstream info_stream;
-        info_stream << std::fixed << std::setprecision(2)
-                    << "Position (m): X=" << x << " Y=" << y << " Z=" << z
-                    << " | FPS: " << current_fps;
-        std::string info_text = info_stream.str();
+        // Create a string with the current position
+        std::ostringstream position_stream;
+        position_stream << std::fixed << std::setprecision(2)
+                        << "Position (m): X=" << x << " Y=" << y << " Z=" << z;
+        std::string position_text = position_stream.str();
 
-        // Print the information text in an updating line at the bottom of the terminal
-        std::cout << "\r" << info_text << std::flush;
+        // Print the position text in an updating line at the bottom of the terminal
+        std::cout << "\r" << position_text << std::flush;
 
         // Optionally display the frame
         #ifdef DISPLAY_FRAMES
-        cv::putText(frame, info_text, cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 255, 0), 2);
+        cv::putText(frame, position_text, cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 255, 0), 2);
         cv::imshow("Frame", frame);
         if (cv::waitKey(1) == 27) { // Exit on 'ESC' key
             break;
@@ -97,7 +95,8 @@ int main(int argc, char** argv) {
         auto now = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
         if (duration >= 1000) {
-            current_fps = frame_count / (duration / 1000.0);
+            double current_fps = frame_count / (duration / 1000.0);
+            std::cout << "\rFPS: " << current_fps << std::flush;
             start = now;
             frame_count = 0;
         }
