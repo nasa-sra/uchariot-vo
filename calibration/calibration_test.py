@@ -27,8 +27,6 @@ def load_realsense_camera():
     pipeline = rs.pipeline()
     config = rs.config()
     config.enable_stream(rs.stream.color, camera_resolution[0], camera_resolution[1], rs.format.bgr8, 30)
-    config.enable_stream(rs.stream.accel, rs.format.motion_xyz32f, 250)
-    config.enable_stream(rs.stream.gyro, rs.format.motion_xyz32f, 200)
     pipeline.start(config)
     return pipeline
 
