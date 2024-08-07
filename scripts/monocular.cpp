@@ -27,7 +27,7 @@ int main(int argc, char** argv) {
     cfg.enable_stream(RS2_STREAM_COLOR, 1280, 720, RS2_FORMAT_BGR8, 90);
     pipe.start(cfg);
 
-    cv::Mat frame;
+    cv::Mat frame, gray_frame;
     cv::cuda::GpuMat d_frame, d_gray_frame;
     double timestamp = 0;
     double fps = 90;
@@ -42,10 +42,15 @@ int main(int argc, char** argv) {
         frame = cv::Mat(cv::Size(1280, 720), CV_8UC3, (void*)color_frame.get_data(), cv::Mat::AUTO_STEP);
         d_frame.upload(frame);
 
+        // Convert to grayscale on GPU
         cv::cuda::cvtColor(d_frame, d_gray_frame, cv::COLOR_BGR2GRAY);
 
-        // Process directly on GPU if possible
-        Sophus::SE3f pose = SLAM.TrackMonocular(d_gray_frame, timestamp);
+        // Download grayscale frame from GPU to CPU
+        d_gray_frame.download(gray_frame);
+
+        // Process the grayscale frame
+        Sophus::SE3f pose = SLAM.TrackMonocular(gray_frame, timestamp);
+
         Eigen::Vector3f translation = pose.translation();
         float x = translation.x();
         float y = translation.y();
