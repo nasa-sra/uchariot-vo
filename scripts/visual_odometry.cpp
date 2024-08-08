@@ -15,6 +15,8 @@
 #include "librealsense2/rsutil.h"
 
 #include <System.h>
+#include <Eigen/Core>
+#include <Eigen/Geometry>
 
 using namespace std;
 
@@ -187,6 +189,31 @@ int main(int argc, char **argv) {
     rs2::align align(align_to);
     rs2::frameset fsSLAM;
 
+    // ----> Calibration for initial gravity vector
+    cout << "Calibrating gravity... Please hold the camera steady." << endl;
+    Eigen::Vector3d avg_accel(0, 0, 0);
+    int calibration_samples = 100; // Take 100 samples for calibration
+
+    pipe.start(cfg); // Start pipeline for calibration 
+    for (int i = 0; i < calibration_samples; ++i) {
+        rs2::frameset frames = pipe.wait_for_frames(); // Get a frame
+        auto motion = frames.first_or_default(RS2_STREAM_ACCEL, RS2_FORMAT_MOTION_XYZ32F);
+        if (motion) {
+            rs2_vector accel_data = motion.as<rs2::motion_frame>().get_motion_data();
+            avg_accel.x() += accel_data.x;
+            avg_accel.y() += accel_data.y;
+            avg_accel.z() += accel_data.z;
+        } else {
+            i--; // Retry if the IMU frame isn't available yet
+        }
+    }
+    pipe.stop(); // Stop the pipeline after calibration
+
+    avg_accel /= calibration_samples; 
+    Eigen::Vector3d gravity_device = avg_accel.normalized() * 9.80665; // Gravity in the device frame
+    cout << "Calibration complete. Estimated gravity in device frame: " << gravity_device.transpose() << endl;
+    // <---- End of calibration
+
     auto imu_callback = [&](const rs2::frame& frame) {
         std::unique_lock<std::mutex> lock(imu_mutex);
 
@@ -300,6 +327,13 @@ int main(int argc, char **argv) {
     cv::Point3d position(0.0, 0.0, 0.0);
     cv::Point3d velocity(0.0, 0.0, 0.0);
     cv::Point3d acceleration(0.0, 0.0, 0.0);
+    
+    // ----> Variables for Orientation Estimation (using a basic complementary filter as an example)
+    Eigen::Vector3d angle(0, 0, 0); // Euler angles (roll, pitch, yaw)
+    Eigen::Vector3d gyro_bias(0, 0, 0); // Gyroscope bias
+    double dt = 1.0 / 200.0; // Assuming gyro frequency of 200 Hz 
+    double alpha = 0.98; // Complementary filter gain (adjust as needed)
+    // <---- Orientation Estimation Variables 
 
     while (!SLAM.isShutDown()) {
         std::vector<rs2_vector> vGyro;
@@ -371,12 +405,50 @@ int main(int argc, char **argv) {
         depthCV.convertTo(depthCV_8U,CV_8U,0.01);
         cv::imshow("depth image", depthCV_8U);*/
 
+        // ----> Orientation Estimation and Gravity Compensation
         for (int i = 0; i < vGyro.size(); ++i) {
+            // 1. Get gyro and accel data
+            Eigen::Vector3d gyro(vGyro[i].x, vGyro[i].y, vGyro[i].z);
+            Eigen::Vector3d accel(vAccel[i].x, vAccel[i].y, vAccel[i].z);
+
+            // 2. Gyro integration (with bias correction)
+            gyro -= gyro_bias; // Correct gyro readings 
+            angle += gyro * dt;
+
+            // 3. Accel to Euler angles
+            double roll = atan2(accel.y(), accel.z());
+            double pitch = atan2(-accel.x(), sqrt(accel.y() * accel.y() + accel.z() * accel.z()));
+
+            // 4. Complementary filter 
+            angle.x() = alpha * angle.x() + (1 - alpha) * roll;
+            angle.y() = alpha * angle.y() + (1 - alpha) * pitch;
+            // angle.z() doesn't get updated in this basic example (yaw drift) 
+
+            // 5. Update gyro bias (optional, helps with drift)
+            gyro_bias = (1 - alpha) * gyro_bias + alpha * gyro; 
+
+            // 6. Convert Euler angles to Rotation matrix (CORRECTED)
+Eigen::Matrix3d R_device_to_world = (Eigen::AngleAxisd(angle.z(), Eigen::Vector3d::UnitZ()) *
+                                     Eigen::AngleAxisd(angle.y(), Eigen::Vector3d::UnitY()) *
+                                     Eigen::AngleAxisd(angle.x(), Eigen::Vector3d::UnitX())).toRotationMatrix();
+
+            // 7. Rotate and compensate acceleration
+            Eigen::Vector3d gravity_world = R_device_to_world * gravity_device;
+            Eigen::Vector3d accel_world = R_device_to_world * accel - gravity_world; 
+
+            // 8. Update vAccel for SLAM 
+            vAccel[i].x = accel_world.x();
+            vAccel[i].y = accel_world.y();
+            vAccel[i].z = accel_world.z();
+
+            // 9. Create IMU measurement for ORB-SLAM3
             ORB_SLAM3::IMU::Point lastPoint(vAccel[i].x, vAccel[i].y, vAccel[i].z,
                                             vGyro[i].x, vGyro[i].y, vGyro[i].z,
                                             vGyro_times[i]);
             vImuMeas.push_back(lastPoint);
         }
+        // <---- End of Orientation Estimation and Gravity Compensation 
+
 
         if (imageScale != 1.f) {
     #ifdef REGISTER_TIMES
