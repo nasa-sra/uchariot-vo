@@ -1,7 +1,5 @@
 #include <iostream>
 #include <opencv2/opencv.hpp>
-#include <opencv2/core/cuda.hpp>
-#include <opencv2/cudaimgproc.hpp>
 #include "System.h"
 #include <chrono>
 #include <iomanip>
@@ -11,13 +9,7 @@
 
 int main(int argc, char** argv) {
     if (argc != 3) {
-        std::cerr << "Usage: ./YourORB_SLAM3Executable <path_to_vocabulary_file> <path_to_settings_file>" << std::endl;
-        return -1;
-    }
-
-    // Check for CUDA device
-    if (cv::cuda::getCudaEnabledDeviceCount() == 0) {
-        std::cerr << "No CUDA capable devices found!" << std::endl;
+        std::cerr << "Usage: ./monocular <path_to_vocabulary_file> <path_to_settings_file>" << std::endl;
         return -1;
     }
 
@@ -33,8 +25,7 @@ int main(int argc, char** argv) {
     cfg.enable_stream(RS2_STREAM_COLOR, 640, 480, RS2_FORMAT_BGR8, 30);
     pipe.start(cfg);
 
-    cv::Mat frame;
-    cv::cuda::GpuMat d_frame, d_resized_frame, d_gray_frame;
+    cv::Mat frame, gray_frame;
     double timestamp = 0;
     double fps = 30; // Assuming 30 FPS, adjust if needed
     double frame_time = 1.0 / fps;
@@ -53,15 +44,8 @@ int main(int argc, char** argv) {
         // Convert RealSense frame to OpenCV Mat
         frame = cv::Mat(cv::Size(640, 480), CV_8UC3, (void*)color_frame.get_data(), cv::Mat::AUTO_STEP);
 
-        // Upload frame to GPU
-        d_frame.upload(frame);
-
-        // Convert to grayscale on GPU
-        cv::cuda::cvtColor(d_frame, d_gray_frame, cv::COLOR_BGR2GRAY);
-
-        // Download grayscale frame from GPU
-        cv::Mat gray_frame;
-        d_gray_frame.download(gray_frame);
+        // Convert to grayscale on CPU
+        cv::cvtColor(frame, gray_frame, cv::COLOR_BGR2GRAY);
 
         // Pass the frame to ORB-SLAM3 and get the current pose
         Sophus::SE3f pose = SLAM.TrackMonocular(gray_frame, timestamp);

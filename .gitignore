@@ -1,9 +1,6 @@
 ORB_SLAM3/
-calimgs/
-iphone13_videos/
-temp/
-README_local.md
 Pangolin/
 opencv/
 opencv_contrib/
-.vscode/
+calimgs/
+Factory_Calibration_Intel_Realsense_D455.yaml
